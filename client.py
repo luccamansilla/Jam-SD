@@ -13,6 +13,6 @@ def do_test(data, datasize):
     with Proxy(uri) as obj:
         obj._pyroBind()
         obj.transfer(data)
-        print("¡Archivo transferido!")
+        print("¡Archivo transferido!!")
 
 do_test(data, datasize)
