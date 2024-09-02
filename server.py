@@ -1,10 +1,13 @@
 import serpent
-from Pyro5.api import expose, serve, config
+import Pyro5.api
+# from Pyro5.api import expose, serve, config
 import Pyro5.socketutil
 import os
 import hashlib
+# import Pyro5.api
+import socket
 
-save_directory = "C:/Users/lucca/Desktop/py/Jam-SD/songs"
+save_directory = "C:/Users/lucca/Desktop/songs"
 
 # Verifica que la carpeta existe y muestra un mensaje
 if not os.path.exists(save_directory):
@@ -13,10 +16,11 @@ if not os.path.exists(save_directory):
 else:
     print(f"Directorio de guardado ya existe: {save_directory}")
 
+@Pyro5.api.expose
 class Testclass(object):
-    @expose
+    # @Pyro5.api.expose
     def transfer(self, data, filename):
-        if config.SERIALIZER == "serpent" and isinstance(data, dict):
+        if Pyro5.api.config.SERIALIZER == "serpent" and isinstance(data, dict):
             data = serpent.tobytes(data)  # Convertir el diccionario en bytes si es necesario
         
         file_path = os.path.join(save_directory, filename)
@@ -33,9 +37,13 @@ class Testclass(object):
             print("Ya existe un archivo con el mismo nombre, no se volvio a guardar el archivo")
         return len(data)
 
-serve(
-    {
-        Testclass: "example.hugetransfer"
-    },
-    host=Pyro5.socketutil.get_ip_address("localhost", workaround127=True),
-    use_ns=False, verbose=True)
+hostname = socket.gethostname()
+IPAddr = socket.gethostbyname(hostname)
+
+daemon = Pyro5.server.Daemon(host=IPAddr)
+ns = Pyro5.api.locate_ns()
+print(ns)
+uri = daemon.register(Testclass)
+ns.register("playlist", uri)
+print("Ready")
+daemon.requestLoop()
