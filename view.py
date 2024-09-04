@@ -1,11 +1,11 @@
-# view.py
-from PyQt5.QtWidgets import QMainWindow, QPushButton, QVBoxLayout, QWidget, QSlider, QListWidget, QLineEdit, QHBoxLayout, QLabel
+from PyQt5.QtWidgets import QMainWindow, QPushButton, QVBoxLayout, QWidget, QSlider, QListWidget, QHBoxLayout, QLabel, QComboBox
 from PyQt5.QtCore import Qt
 
 class MusicPlayerView(QMainWindow):
     def __init__(self):
         super().__init__()
         self.playlist = []
+        self.current_playlist = None  # Añadir una variable para la playlist actual
         
         self.setWindowTitle('Reproductor de música')
         self.setGeometry(100, 100, 600, 400)
@@ -13,11 +13,14 @@ class MusicPlayerView(QMainWindow):
         # Crear widgets
         self.songList = QListWidget()
         self.songList.setFixedWidth(300)
-        
-        # Playlists activas
+        self.songList.setSelectionMode(QListWidget.SingleSelection)  # Asegúrate de que se pueda seleccionar una canción
+
         self.playlistWidget = QListWidget()
         self.playlistWidget.setWindowTitle("Playlists activas")  
         self.playlistWidget.setVisible(False)
+
+        self.playlistComboBox = QComboBox()
+        self.playlistComboBox.setVisible(True)
 
         self.addSongButton = QPushButton('Agregar canción')
         self.seePlaylistsButton = QPushButton('Enlistar Playlists')
@@ -32,6 +35,10 @@ class MusicPlayerView(QMainWindow):
         # Crear etiquetas de tiempo
         self.currentTimeLabel = QLabel('')
         self.durationTimeLabel = QLabel('')
+
+        # Crear la etiqueta para mostrar el nombre de la canción
+        self.songNameLabel = QLabel('')
+        self.songNameLabel.setAlignment(Qt.AlignCenter)
 
         # Crear el layout para la barra de progreso y las etiquetas
         progressLayout = QHBoxLayout()
@@ -49,6 +56,9 @@ class MusicPlayerView(QMainWindow):
         controlLayout.addWidget(self.playButton)
         controlLayout.addWidget(self.stopButton)
 
+        playlistLayout = QHBoxLayout()
+        playlistLayout.addWidget(self.playlistComboBox)
+
         # Mensaje de error cuando empieza canción sin seleccionar
         self.warningLabel = QLabel('')
         self.warningLabel.setStyleSheet("color: red")
@@ -60,7 +70,9 @@ class MusicPlayerView(QMainWindow):
         layout.addLayout(buttonLayout)
         layout.addLayout(progressLayout)
         layout.addWidget(self.warningLabel)
+        layout.addWidget(self.songNameLabel)  # Agrega la etiqueta para el nombre de la canción
         layout.addLayout(controlLayout)
+        layout.addLayout(playlistLayout)
 
         # Crear un widget central y establecer el layout
         container = QWidget()

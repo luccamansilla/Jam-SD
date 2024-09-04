@@ -4,7 +4,7 @@ import Pyro5.socketutil
 import os
 import hashlib
 
-save_directory = "C:/Users/lucca/Desktop/py/Jam-SD/songs"
+save_directory = "C:/Users/bandi/OneDrive/Escritorio/PY/Jam-SD/songs"
 
 # Verifica que la carpeta existe y muestra un mensaje
 if not os.path.exists(save_directory):

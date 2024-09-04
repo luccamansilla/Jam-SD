@@ -7,7 +7,7 @@ import hashlib
 # import Pyro5.api
 import socket
 
-save_directory = "C:/Users/lucca/Desktop/songs"
+save_directory = "C:/Users/bandi/OneDrive/Escritorio/songs"
 
 # Verifica que la carpeta existe y muestra un mensaje
 if not os.path.exists(save_directory):
@@ -44,6 +44,6 @@ daemon = Pyro5.server.Daemon(host=IPAddr)
 ns = Pyro5.api.locate_ns()
 print(ns)
 uri = daemon.register(Testclass)
-ns.register("playlist", uri)
+ns.register("luccaplaylist", uri)
 print("Ready")
 daemon.requestLoop()
