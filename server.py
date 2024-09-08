@@ -6,6 +6,8 @@ import os
 import hashlib
 # import Pyro5.api
 import socket
+from lamport_clock import LamportClock  # Importa la clase LamportClock
+
 
 save_directory = "C:/Users/bandi/OneDrive/Escritorio/songs"
 
@@ -41,8 +43,8 @@ class Testclass(object):
 
     # @Pyro5.api.expose
     def transfer(self, data, filename, client_timestamp):
-        self.server_clock.update(client_timestamp)
-        timestamp = self.server_clock.get_time()
+        self.lamport_clock.update(client_timestamp)
+        timestamp = self.lamport_clock.get_time()
 
         if Pyro5.api.config.SERIALIZER == "serpent" and isinstance(data, dict):
             data = serpent.tobytes(data)  # Convertir el diccionario en bytes si es necesario
