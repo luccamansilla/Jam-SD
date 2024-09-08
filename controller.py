@@ -1,8 +1,10 @@
 import os
+from lamport_clock import LamportClock
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtCore import QUrl, QTime
 from PyQt5.QtWidgets import QFileDialog
 import Pyro5.api 
+
 
 class MusicPlayerController:
     def __init__(self, view):
@@ -11,6 +13,8 @@ class MusicPlayerController:
         self.nameserver = Pyro5.core.locate_ns()
         self.uri = self.nameserver.lookup("luccaplaylist")
         self.client = Pyro5.api.Proxy(self.uri)
+         # Reloj lógico de Lamport
+        self.lamport_clock = LamportClock()
 
         # Diccionario para almacenar playlists y sus canciones
         self.playlists = {}
@@ -37,6 +41,10 @@ class MusicPlayerController:
             self.view.warningLabel.setVisible(True)
             return
 
+        # Actualizar reloj lógico 
+        self.lamport_clock.increment()
+        timestamp = self.lamport_clock.get_time()
+
         file_path, _ = QFileDialog.getOpenFileName(self.view, "Selecciona una canción", "", "Audio Files (*.mp3 *.wav *.ogg)")
         if file_path:
             song_name = os.path.basename(file_path)
@@ -53,9 +61,11 @@ class MusicPlayerController:
             self.view.warningLabel.setVisible(False)
             self.view.songList.addItem(song_name)
             self.playlists[self.current_playlist].append(file_path)  # Agregar canción a la playlist actual
-            self.sendSongToServer(file_path)
             print(f"Canción '{song_name}' agregada a la playlist '{self.current_playlist}'.")
-
+            
+             # Envio la cancion y el timepo al servidor , Después de recibir la respuesta del servidor (su hora)
+            response_data, server_timestamp = self.sendSongToServer(file_path, timestamp)
+            self.lamport_clock.update(server_timestamp) #actualizo con el reloj del servidor
 
     def viewPlaylists(self):
         if self.view.playlistWidget.isVisible():
@@ -73,15 +83,21 @@ class MusicPlayerController:
             self.view.playlistComboBox.addItem(playlist_name)
             self.playlists[playlist_name] = []  # Inicializar lista de canciones para cada playlist
 
-    def sendSongToServer(self, file_path):
+    def sendSongToServer(self, file_path , timestamp):
+        self.lamport_clock.increment()   #accion incremento reloj lamport
+        timestamp = self.lamport_clock.get_time()
+
         with open(file_path, "rb") as file:
             data = file.read()
             filename = os.path.basename(file.name)
             try:
-                self.client.transfer(data, filename)
+                response_data ,server_timestamp = self.client.transfer(data, filename, timestamp)  # Ahora recibe el timestamp del servidor
                 print(f"Archivo '{filename}' enviado al servidor.")
+                return response_data, server_timestamp
             except Exception as e:
                 print(f"Error al enviar la canción al servidor: {e}")
+                return None, timestamp  # En caso de error, devolver el timestamp local
+
 
     def removeSong(self):
         if self.current_playlist is None:
@@ -98,6 +114,16 @@ class MusicPlayerController:
                 self.view.songList.takeItem(self.view.songList.row(selected_song))
                 print(f"Canción '{song_name}' eliminada de la playlist '{self.current_playlist}'.")
 
+                 # incremento reloj y Informa al servidor que la canción ha sido eliminada lamport
+                self.lamport_clock.increment()
+                timestamp = self.lamport_clock.get_time()
+                try:
+                    server_timestamp = self.client.removeSongFromPlaylist(song_name, self.current_playlist, timestamp)
+                    self.lamport_clock.update(server_timestamp)
+                except Exception as e:
+                    print(f"Error al informar al servidor sobre la eliminación de la canción: {e}")
+
+
     def playSong(self):
         selected_song = self.view.songList.currentItem()
 
@@ -106,12 +132,32 @@ class MusicPlayerController:
             self.view.warningLabel.setVisible(True)
             return
 
+        #incremento reloj lamport
+        self.lamport_clock.increment()
+        timestamp = self.lamport_clock.get_time()
+
         if self.player.state() == QMediaPlayer.PlayingState:
             self.player.pause()
             self.view.playButton.setText("Renaudar")
+             
+             # Informar al servidor que la canción ha sido pausada
+            try:
+                server_timestamp = self.client.updatePlaybackState(selected_song.text(), "paused", timestamp)
+                self.lamport_clock.update(server_timestamp)
+            except Exception as e:
+                print(f"Error al enviar el estado de reproducción al servidor: {e}")
+        
         elif self.player.state() == QMediaPlayer.PausedState:
             self.player.play()
             self.view.playButton.setText("Pausar")
+
+             # Informar al servidor que la canción ha sido reanudada
+            try:
+                server_timestamp = self.client.updatePlaybackState(selected_song.text(), "playing", timestamp)
+                self.lamport_clock.update(server_timestamp)  # Actualizar con el timestamp del servidor
+            except Exception as e:
+                print(f"Error al enviar el estado de reproducción al servidor: {e}")
+        
         else:
             self.view.warningLabel.setText("")
             self.view.warningLabel.setVisible(False)
@@ -124,9 +170,28 @@ class MusicPlayerController:
                 self.view.playButton.setText("Pausar")
                 self.view.songNameLabel.setText(f"Reproduciendo: {os.path.basename(song_path)}")
 
+                # Informar al servidor que la canción ha comenzado a reproducirse
+                try:
+                    server_timestamp = self.client.updatePlaybackState(selected_song.text(), "playing", timestamp)
+                    self.lamport_clock.update(server_timestamp)  # Actualizar con el timestamp del servidor
+                except Exception as e:
+                    print(f"Error al enviar el estado de reproducción al servidor: {e}")
+
+
     def stopSong(self):
+        selected_song = self.view.songList.currentItem()
         self.player.stop()
         self.view.playButton.setText("Reproducir")
+
+        # incremento reloj y Informar al servidor que la canción ha sido detenida
+        self.lamport_clock.increment()
+        timestamp = self.lamport_clock.get_time()
+        try:
+            server_timestamp = self.client.updatePlaybackState(selected_song.text(), "stopped", timestamp)
+            self.lamport_clock.update(server_timestamp)
+        except Exception as e:
+            print(f"Error al enviar el estado de reproducción al servidor: {e}")
+
 
     def updateProgressBar(self, position):
         self.view.progressBar.setValue(position)

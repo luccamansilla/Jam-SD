@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import QApplication
 from view import MusicPlayerView
 from controller import MusicPlayerController
 
+
 def main():
     app = QApplication(sys.argv)
 

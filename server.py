@@ -18,8 +18,32 @@ else:
 
 @Pyro5.api.expose
 class Testclass(object):
+    def __init__(self):
+        self.lamport_clock = LamportClock()
+
+
+    #@Pyro5.api.expose
+    def updatePlaybackState(self, song_name, state, client_timestamp):
+        self.lamport_clock.update(client_timestamp)
+        server_timestamp = self.lamport_clock.get_time()
+        # Actualiza el estado de reproducción en el servidor
+        print(f"Actualización: '{song_name}' está {state}.")
+        return server_timestamp
+    
+    #@Pyro5.api.expose
+    def removeSongFromPlaylist(self, song_name, playlist_name, client_timestamp):
+        self.lamport_clock.update(client_timestamp)
+        server_timestamp = self.lamport_clock.get_time()
+        # Elimina la canción de la playlist
+        print(f"Eliminando canción '{song_name}' de la playlist '{playlist_name}'.")
+        return server_timestamp
+        
+
     # @Pyro5.api.expose
-    def transfer(self, data, filename):
+    def transfer(self, data, filename, client_timestamp):
+        self.server_clock.update(client_timestamp)
+        timestamp = self.server_clock.get_time()
+
         if Pyro5.api.config.SERIALIZER == "serpent" and isinstance(data, dict):
             data = serpent.tobytes(data)  # Convertir el diccionario en bytes si es necesario
         
@@ -27,7 +51,7 @@ class Testclass(object):
         print(f"Ruta de archivo configurada: {file_path}")
 
         if not os.path.exists(file_path):
-            try:
+            try:    
                 with open(file_path, "wb") as f:
                     f.write(data)
                     print(f"Archivo guardado en: {file_path}")
@@ -35,7 +59,7 @@ class Testclass(object):
                 print(f"Failed to save the file: {e}")
         else:
             print("Ya existe un archivo con el mismo nombre, no se volvio a guardar el archivo")
-        return len(data)
+        return len(data), timestamp #devuelve el tiempo del servidor y el cliente obtiene este tiempo y se actualiza.
 
 hostname = socket.gethostname()
 IPAddr = socket.gethostbyname(hostname)
