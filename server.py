@@ -6,8 +6,9 @@ import os
 import hashlib
 # import Pyro5.api
 import socket
+# song_path = os.path.join(os.getcwd(), 'songs', song_name)
 
-save_directory = "C:/Users/lucca/Desktop/songs"
+save_directory = os.path.abspath(os.path.join(os.getcwd(), 'songs'))
 
 # Verifica que la carpeta existe y muestra un mensaje
 if not os.path.exists(save_directory):

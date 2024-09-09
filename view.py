@@ -1,5 +1,5 @@
 # view.py
-from PyQt5.QtWidgets import QMainWindow, QPushButton, QVBoxLayout, QWidget, QSlider, QListWidget, QLineEdit, QHBoxLayout, QLabel
+from PyQt5.QtWidgets import QMainWindow, QPushButton, QVBoxLayout, QWidget, QSlider, QListWidget, QDialog, QHBoxLayout, QLabel, QComboBox
 from PyQt5.QtCore import Qt
 
 class MusicPlayerView(QMainWindow):
@@ -15,12 +15,18 @@ class MusicPlayerView(QMainWindow):
         self.songList.setFixedWidth(300)
         
         # Playlists activas
-        self.playlistWidget = QListWidget()
-        self.playlistWidget.setWindowTitle("Playlists activas")  
-        self.playlistWidget.setVisible(False)
-
+        # self.playlistWidget = QListWidget()
+        # self.playlistWidget.setWindowTitle("Playlists activas")  
+        # self.playlistWidget.setVisible(False)
+        # self.confirmPlaylistButton = QPushButton("Confirmar selección")
+        # self.confirmPlaylistButton.setVisible(False)
+        
+        
+        self.playlistComboBox = QComboBox()
+        self.playlistComboBox.setVisible(True)
+        
         self.addSongButton = QPushButton('Agregar canción')
-        self.seePlaylistsButton = QPushButton('Enlistar Playlists')
+        self.seePlaylistsButton = QPushButton('Playlist compartidas')
         self.removeSongButton = QPushButton('Borrar canción')
 
         self.playButton = QPushButton('Reproducir')
@@ -61,8 +67,26 @@ class MusicPlayerView(QMainWindow):
         layout.addLayout(progressLayout)
         layout.addWidget(self.warningLabel)
         layout.addLayout(controlLayout)
+        layout.addWidget(self.playlistComboBox)
 
         # Crear un widget central y establecer el layout
         container = QWidget()
         container.setLayout(layout)
         self.setCentralWidget(container)
+        
+class PlaylistDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Playlists activas")
+
+        self.playlistWidget = QListWidget()
+        self.confirmPlaylistButton = QPushButton("Confirmar selección")
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.playlistWidget)
+        layout.addWidget(self.confirmPlaylistButton)
+        self.setLayout(layout)
+
+        # Conectar el botón a una función
+        # self.confirmPlaylistButton.clicked.connect(self.accept)
+        # self.confirmPlaylistButton.clicked.connect(self.confirm_selection)
