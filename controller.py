@@ -14,6 +14,8 @@ class MusicPlayerController:
         self.nameserver = Pyro5.core.locate_ns()
         self.uri= self.nameserver.lookup("playlist")         
         self.client = Pyro5.api.Proxy(self.uri)
+        self.current_playlist = None
+        self.current_song = None
 
         self.view.addSongButton.clicked.connect(self.addSong)
         self.view.seePlaylistsButton.clicked.connect(self.viewPlaylists)
@@ -78,6 +80,11 @@ class MusicPlayerController:
 
     def playSong(self):
         selected_song = self.view.songList.currentItem()
+        song_name = selected_song.text()
+        current_time = self.view.currentTimeLabel.text()
+        if current_time == '':
+            current_time = '0:0'
+
         if not selected_song:
             self.view.warningLabel.setText("No seleccionó ninguna canción")
             self.view.warningLabel.setVisible(True)
@@ -86,14 +93,18 @@ class MusicPlayerController:
         if self.player.state() == QMediaPlayer.PlayingState:
             self.player.pause()
             self.view.playButton.setText("Renaudar")
+            self.client.update_playlist_state(self.current_playlist, song_name, current_time,'pausado')
+
         elif self.player.state() == QMediaPlayer.PausedState:
             self.player.play()
             self.view.playButton.setText("Pausar")
+            self.client.update_playlist_state(self.current_playlist, song_name, current_time,'reproduciendo')
+
         else:
             self.view.warningLabel.setText("")
             self.view.warningLabel.setVisible(False)
             
-            song_name = selected_song.text()
+            self.current_song = selected_song.text()
             song_path = os.path.join(os.getcwd(), 'songs', song_name)
 
             if not os.path.exists(song_path):
@@ -106,6 +117,49 @@ class MusicPlayerController:
             self.player.setMedia(content)
             self.player.play()
             self.view.playButton.setText("Pausar")
+            # Enviar el estado actualizado de la canción al servidor
+            self.client.update_playlist_state(self.current_playlist, song_name, current_time,'reproduciendo')
+            self.update_song_state(song_name, current_time,'reproduciendo')
+
+
+    def update_song_state(self, song_name, position, state):
+        print(song_name)
+        print(self.current_song)
+        print(position)
+        print(state)
+        # Actualizar el nombre de la canción actual
+        if str(song_name) != str(self.current_song):
+            self.current_song = song_name
+        
+        self.view.warningLabel.setText("SEGUNDO RECIBIDOS DE LA CANCION {}".format(position))
+        self.view.warningLabel.setVisible(True)
+        # Actualizar la posición del reproductor
+        ##self.player.setPosition(position)
+        
+        # Actualizar el estado del reproductor
+        print('actualiza cancion')
+        if state == QMediaPlayer.PlayingState:
+            self.player.play()
+            self.view.playButton.setText("Pausar")
+        elif state == QMediaPlayer.PausedState:
+            self.player.pause()
+            self.view.playButton.setText("Renaudar")
+        
+        # Actualizar la interfaz de usuario
+        ##self.view.progressBar.setValue(position)
+        #self.view.currentTimeLabel.setText(QTime(0, 0).addMSecs(position).toString("mm:ss"))
+
+    #cliente se conecta llama a este metodo para obtener estado actual de cancion
+    def request_initial_state(self):
+        if self.current_playlist:
+            state = self.client.get_playlist_state(self.current_playlist) #metodo al servidor
+            if state:
+                self.current_song = state['song']
+                self.player.setPosition(state['position'])
+                if state['state'] == QMediaPlayer.PlayingState:
+                    self.player.play()
+                elif state['state'] == QMediaPlayer.PausedState:
+                    self.player.pause()
 
     def stopSong(self):
         self.player.stop()
@@ -124,6 +178,9 @@ class MusicPlayerController:
     def setSongPosition(self):
         new_position = self.view.progressBar.value()
         self.player.setPosition(new_position)
+
+    def getPosition(self):
+        return self.view.progressBar.value()
         
     def connect_db(self):
         return db.connect('spotify.db')

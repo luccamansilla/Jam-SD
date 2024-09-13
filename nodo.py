@@ -24,7 +24,39 @@ class Testclass(object):
         self.nodos = nodos  # Lista de nodos (ID, URI)
         self.activo = True
         self.nameserver = Pyro5.core.locate_ns()
+        self.playlist_states = {}  # Diccionario para almacenar el estado de cada playlist
+        self.clients = {}  # Diccionario para almacenar los proxies de los clientes
         
+        #actualiza estado de la cancion en la platlist
+    def update_playlist_state(self, playlist_name, song_name, position, state):
+        print("entro")
+        if playlist_name not in self.playlist_states:
+            self.playlist_states[playlist_name] = {}
+        self.playlist_states[playlist_name] = {
+            'song': song_name,
+            'position': position,
+            'state': state
+        }
+        print(self.playlist_states)
+        self.sync_clients(playlist_name)
+
+    #sincroniza a todos los clientes el estado de la cancion
+    def sync_clients(self, playlist_name):
+        if playlist_name not in self.playlist_states:
+            return
+        
+        state = self.playlist_states[playlist_name]
+        for client_uri in self.clients:
+            try:
+                proxy = Pyro5.api.Proxy(client_uri)
+                print("pasando")
+                proxy.update_song_state(state['song'], state['position'], state['state'])
+            except Exception as e:
+                print(f"Error al sincronizar con cliente {client_uri}: {e}")
+    
+    def get_playlist_state(self, playlist_name):
+        return self.playlist_states.get(playlist_name, {})          
+
     def transfer(self, data, filename):
         if Pyro5.api.config.SERIALIZER == "serpent" and isinstance(data, dict):
             data = serpent.tobytes(data)  # Convertir el diccionario en bytes si es necesario
@@ -97,7 +129,7 @@ class Testclass(object):
 
 
 if __name__ == "__main__":
-    node_id = int(sys.argv[1])  # Toma el ID del nodo desde los argumentos de línea de comandos
+    node_id =1 #int(sys.argv[1])  # Toma el ID del nodo desde los argumentos de línea de comandos
     listPort =[0,5001,5002,5003];
     nodos = [
         (1, "yamilplaylist1"),
@@ -110,7 +142,7 @@ if __name__ == "__main__":
 
     # Registrar el nodo
     uri = daemon.register(Testclass(node_id, nodos))
-    ns.register(f"yamilplaylist{node_id}", uri)
+    ns.register(f"playlist", uri)
     
     nodo = Testclass(node_id, nodos)
     threading.Thread(target=nodo.detectar_fallo_lider).start()
