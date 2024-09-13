@@ -9,7 +9,7 @@ import random
 # Controlador de vista
 from controller import MusicPlayerController
 
-save_directory = ".\Jam-SD\songs"
+save_directory = ".\songs"
 
 # Verifica que la carpeta existe y muestra un mensaje
 if not os.path.exists(save_directory):
@@ -23,7 +23,7 @@ class Testclass(object):
     
     def __init__(self, id, nodos):
         self.id = id  # ID único del nodo
-        self.lider = None
+        self.lider = 1
         self.nodos = nodos  # Lista de nodos (ID, URI)
         self.activo = True
     
@@ -105,9 +105,9 @@ IPAddr = socket.gethostbyname(hostname)
 
 # Lista de nodos (ID, URI)
 nodos = [
-    (1, "yamilplaylist1"),
-    (2, "yamilplaylist2"),
-    (3, "yamilplaylist3"),
+    (1, "playlist1"),
+    (2, "playlist2"),
+    (3, "playlist3"),
 ]
 
 # El ID de este nodo

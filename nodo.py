@@ -8,7 +8,7 @@ import time
 import random
 
 
-save_directory = ".\Jam-SD\songs"
+save_directory = ".\songs"
 
 if not os.path.exists(save_directory):
     os.makedirs(save_directory)
@@ -19,7 +19,7 @@ else:
 @Pyro5.api.expose
 class Testclass(object):
     def __init__(self, id, nodos):
-        self.id = id  # ID único del nodo
+        self.id = 1  # ID único del nodo
         self.lider = None
         self.nodos = nodos  # Lista de nodos (ID, URI)
         self.activo = True
@@ -29,7 +29,6 @@ class Testclass(object):
         
         #actualiza estado de la cancion en la platlist
     def update_playlist_state(self, playlist_name, song_name, position, state):
-        print("entro")
         if playlist_name not in self.playlist_states:
             self.playlist_states[playlist_name] = {}
         self.playlist_states[playlist_name] = {
@@ -42,11 +41,13 @@ class Testclass(object):
 
     #sincroniza a todos los clientes el estado de la cancion
     def sync_clients(self, playlist_name):
+        print("entre")
         if playlist_name not in self.playlist_states:
             return
         
         state = self.playlist_states[playlist_name]
         for client_uri in self.clients:
+            print(self.clients)
             try:
                 proxy = Pyro5.api.Proxy(client_uri)
                 print("pasando")
@@ -88,13 +89,11 @@ class Testclass(object):
             print(f"Nodo {self.id} se convierte en el nuevo líder.")
             for nodo in self.nodos:
                 if nodo[0] != self.id:
-                    uri = self.nameserver.lookup(nodo[1])
-                    proxy = Pyro5.api.Proxy(uri)
+                    proxy = Pyro5.api.Proxy(f"PYRONAME:{nodo[1]}")
                     proxy.nuevo_lider(self.id)
         else:
             for candidato in candidatos:
-                uri = self.nameserver.lookup(candidato[1])
-                proxy = Pyro5.api.Proxy(uri)
+                proxy = Pyro5.api.Proxy(f"PYRONAME:{candidato[1]}")
                 try:
                     proxy.eleccion(self.id)
                 except Exception as e:
@@ -132,9 +131,7 @@ if __name__ == "__main__":
     node_id =1 #int(sys.argv[1])  # Toma el ID del nodo desde los argumentos de línea de comandos
     listPort =[0,5001,5002,5003];
     nodos = [
-        (1, "yamilplaylist1"),
-        (2, "yamilplaylist2"),
-        (3, "yamilplaylist3"),
+        (1, "playlist"),
     ]
     
     daemon = Pyro5.server.Daemon(host=socket.gethostbyname(socket.gethostname()), port=listPort[node_id])

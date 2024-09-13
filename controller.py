@@ -56,6 +56,7 @@ class MusicPlayerController:
         print(playlists)
         for playlist in playlists:
             self.view.playlistComboBox.addItem(str(playlist[1]))
+        self.request_initial_state() #si recien entra llama al metodo para sincronizar el estado de la cancion
         
             
             
@@ -119,10 +120,11 @@ class MusicPlayerController:
             self.view.playButton.setText("Pausar")
             # Enviar el estado actualizado de la canción al servidor
             self.client.update_playlist_state(self.current_playlist, song_name, current_time,'reproduciendo')
-            self.update_song_state(song_name, current_time,'reproduciendo')
+            #self.update_song_state(song_name, current_time,'reproduciendo')
 
 
     def update_song_state(self, song_name, position, state):
+        print("pasando")
         print(song_name)
         print(self.current_song)
         print(position)
@@ -154,12 +156,7 @@ class MusicPlayerController:
         if self.current_playlist:
             state = self.client.get_playlist_state(self.current_playlist) #metodo al servidor
             if state:
-                self.current_song = state['song']
-                self.player.setPosition(state['position'])
-                if state['state'] == QMediaPlayer.PlayingState:
-                    self.player.play()
-                elif state['state'] == QMediaPlayer.PausedState:
-                    self.player.pause()
+                self.update_song_state(self, state['song'], state['position'], state['state'] )
 
     def stopSong(self):
         self.player.stop()
