@@ -24,39 +24,90 @@ class Testclass(object):
         self.nodos = nodos  # Lista de nodos (ID, URI)
         self.activo = True
         self.nameserver = Pyro5.core.locate_ns()
-        self.playlist_states = {}  # Diccionario para almacenar el estado de cada playlist
+        self.songs_states = {}  # Diccionario para almacenar el estado de cada cancion
         self.clients = {}  # Diccionario para almacenar los proxies de los clientes
-        
+        self.vector_clock = {} 
+        self.clientes = []
+
+    def get_clients_in_playlist(self, playlist_name):
+        self.db_connection = db_connection
+        cursor = self.db_connection.cursor()
+        # Obtener el ID de la playlist basado en su nombre
+        cursor.execute("SELECT playlist_id FROM playlist WHERE name = ?", (playlist_name,))
+        playlist_row = cursor.fetchone()
+        if not playlist_row:
+            return []  # Playlist no encontrada
+        playlist_id = playlist_row[0]
+        # Obtener los usuarios que están en la playlist
+        cursor.execute("""
+            SELECT users.user_id, users.name
+            FROM users
+            JOIN users_playlist ON users.user_id = users_playlist.user_id
+            WHERE users_playlist.playlist_id = ?
+        """, (playlist_id,))
+
+        usuarios = cursor.fetchall()
+        cursor.close()
+
+        # Devuelve la lista de clientes basados en los usuarios obtenidos
+        return [self.clients.get(user_id) for user_id, _ in usuarios if user_id in self.clients]
+
+    #actualizo el clock de cada cliente en la playlist
+    def update_state(self, playlist_name, state, clock):
+        current_clock.fusionar(clock)
+        self.vector_clock[playlist_name] = (current_clock)
+
+         # Notificar a todos los clientes de la playlist
+        for client in self.get_clients_in_playlist(playlist_name):
+            client.receive_update(playlist_name, state, current_clock.obtener_reloj())
+
+
         #actualiza estado de la cancion en la platlist
-    def update_playlist_state(self, playlist_name, song_name, position, state):
-        if playlist_name not in self.playlist_states:
-            self.playlist_states[playlist_name] = {}
-        self.playlist_states[playlist_name] = {
+    def update_playlist_state(self, playlist_name, song_name, position, state , duration):
+        if playlist_name not in self.songs_states:
+            self.songs_states[playlist_name] = {}
+        self.songs_states[playlist_name] = {
             'song': song_name,
             'position': position,
-            'state': state
+            'state': state,
+            'duration': duration
         }
-        print(self.playlist_states)
+        print(self.songs_states)
         self.sync_clients(playlist_name)
 
     #sincroniza a todos los clientes el estado de la cancion
     def sync_clients(self, playlist_name):
         print("entre")
-        if playlist_name not in self.playlist_states:
+        if playlist_name not in self.songs_states:
             return
         
-        state = self.playlist_states[playlist_name]
-        for client_uri in self.clients:
+        state = self.songs_states[playlist_name]
+        for client_uri in self.clientes:
             print(self.clients)
             try:
                 proxy = Pyro5.api.Proxy(client_uri)
                 print("pasando")
-                proxy.update_song_state(state['song'], state['position'], state['state'])
+                proxy.mainThread(state['song'], state['position'], state['state'] , state['duration'])
             except Exception as e:
-                print(f"Error al sincronizar con cliente {client_uri}: {e}")
-    
+                print(f"Error al sincronizar con cliente para actualizar canciones {client_uri}: {e}")
+   
+    @Pyro5.api.expose
     def get_playlist_state(self, playlist_name):
-        return self.playlist_states.get(playlist_name, {})          
+        return self.songs_states.get(playlist_name, {})    
+
+    @Pyro5.api.expose
+    def notify_clients(self): 
+        for cliente in self.clientes:
+            try:
+                client_proxy = Pyro5.api.Proxy(cliente)  # Crea un proxy para el cliente
+                client_proxy.onPlaylistSelected()  # Llama al método expuesto en el cliente
+            except Exception as e:
+                print(f"Error al notificar al cliente {cliente}: {e}")
+
+    @Pyro5.api.expose
+    def register_client(self, client):
+        self.clientes.append(client)
+        print(f"Cliente registrado: {client}")
 
     def transfer(self, data, filename):
         if Pyro5.api.config.SERIALIZER == "serpent" and isinstance(data, dict):

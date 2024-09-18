@@ -5,18 +5,44 @@ from PyQt5.QtWidgets import QFileDialog
 import Pyro5.api 
 import sqlite3 as db
 from view import PlaylistDialog
+import threading
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QTimer
 
-class MusicPlayerController:
+
+
+class MusicPlayerController(QObject):
+    
+    update_gui_signal = pyqtSignal(str, str, str, str)  # Define la señal (ej: para actualizar canción, posición, estado)
+    
     def __init__(self, view):
-        
+        super().__init__()  # Asegúrate de llamar al constructor de QObject
+
+        # Crear el Daemon Pyro y registrar el objeto del cliente
+        daemon = Pyro5.api.Daemon()  # Crear el daemon Pyro para el cliente
+        client_uri = daemon.register(self)  # Registrar el objeto cliente
+
+        # Registrar el cliente en el servidor (pasar el URI del cliente al servidor)
+        nameserver = Pyro5.api.locate_ns()
+        self.server_uri = nameserver.lookup("playlist")  # Busca el servidor
+        self.client = Pyro5.api.Proxy(self.server_uri)
+        self.client.register_client(client_uri)  # Pasar el URI del cliente al servidor
+
+        print(f"Cliente registrado en el servidor con URI: {client_uri}")
+
+         # Iniciar el daemon en un hilo separado para escuchar invocaciones desde el servidor
+        self.daemon_thread = threading.Thread(target=daemon.requestLoop)
+        self.daemon_thread.daemon = True  # El hilo se detiene cuando el programa principal termina
+        self.daemon_thread.start()
+
         self.view = view
         self.player = QMediaPlayer()
-        self.nameserver = Pyro5.core.locate_ns()
-        self.uri= self.nameserver.lookup("playlist")         
-        self.client = Pyro5.api.Proxy(self.uri)
         self.current_playlist = None
         self.current_song = None
+        self.vector_clocks = {}  # {playlist_name: RelojVectorial}
 
+
+        self.update_gui_signal.connect(self.update_song_state)#conecion al principa;
         self.view.addSongButton.clicked.connect(self.addSong)
         self.view.seePlaylistsButton.clicked.connect(self.viewPlaylists)
         self.view.removeSongButton.clicked.connect(self.removeSong)
@@ -29,7 +55,7 @@ class MusicPlayerController:
 
         self.updatePlaylists()
         
-        
+    @Pyro5.api.expose    
     def onPlaylistSelected(self): #me dice en que playlist estoy
         self.current_playlist = self.view.playlistComboBox.currentText()
         self.view.setWindowTitle(f"Reproductor de música - Playlist: {self.current_playlist}")
@@ -50,6 +76,7 @@ class MusicPlayerController:
         self.updatePlaylists()
         dialog.exec_()
 
+
     def updatePlaylists(self):
         playlists = self.get_playlists()
         self.view.playlistComboBox.clear()
@@ -59,7 +86,6 @@ class MusicPlayerController:
         self.request_initial_state() #si recien entra llama al metodo para sincronizar el estado de la cancion
         
             
-            
     def sendSongToServer(self, file_path):
         with open(file_path, "rb") as file:
             data = file.read()
@@ -67,6 +93,7 @@ class MusicPlayerController:
             try:
                 self.client.transfer(data, filename)
                 self.insertSong(filename, filename, self.view.playlistComboBox.currentText())
+                self.client.notify_clients()
                 self.onPlaylistSelected()
                 print(f"Archivo {filename} enviado al servidor")
             except Exception as e:
@@ -83,6 +110,7 @@ class MusicPlayerController:
         selected_song = self.view.songList.currentItem()
         song_name = selected_song.text()
         current_time = self.view.currentTimeLabel.text()
+        duration = self.view.durationTimeLabel.text()
         if current_time == '':
             current_time = '0:0'
 
@@ -94,12 +122,12 @@ class MusicPlayerController:
         if self.player.state() == QMediaPlayer.PlayingState:
             self.player.pause()
             self.view.playButton.setText("Renaudar")
-            self.client.update_playlist_state(self.current_playlist, song_name, current_time,'pausado')
+            self.client.update_playlist_state(self.current_playlist, song_name, current_time,'pausado', duration)
 
         elif self.player.state() == QMediaPlayer.PausedState:
             self.player.play()
             self.view.playButton.setText("Pausar")
-            self.client.update_playlist_state(self.current_playlist, song_name, current_time,'reproduciendo')
+            self.client.update_playlist_state(self.current_playlist, song_name, current_time,'reproduciendo', duration)
 
         else:
             self.view.warningLabel.setText("")
@@ -118,46 +146,100 @@ class MusicPlayerController:
             self.player.setMedia(content)
             self.player.play()
             self.view.playButton.setText("Pausar")
-            # Enviar el estado actualizado de la canción al servidor
-            self.client.update_playlist_state(self.current_playlist, song_name, current_time,'reproduciendo')
-            #self.update_song_state(song_name, current_time,'reproduciendo')
 
+            flag = False
+             # Esperar a que se obtenga la duración
+            def wait_for_duration():
+                duration = self.player.duration()
+                if duration == 0:
+                    # Si la duración es 0, esperar un poco y volver a intentar
+                    QTimer.singleShot(100, wait_for_duration)
+                else:
+                    # Enviar el estado actualizado de la canción al servidor
+                    flag = True
+                    duration = self.view.durationTimeLabel.text()
+                    print(f"la duracion es : {duration}")
+                    self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'reproduciendo', duration)
+            
+            if not flag:
+                wait_for_duration()
 
-    def update_song_state(self, song_name, position, state):
-        print("pasando")
-        print(song_name)
-        print(self.current_song)
-        print(position)
-        print(state)
-        # Actualizar el nombre de la canción actual
-        if str(song_name) != str(self.current_song):
-            self.current_song = song_name
-        
-        self.view.warningLabel.setText("SEGUNDO RECIBIDOS DE LA CANCION {}".format(position))
-        self.view.warningLabel.setVisible(True)
-        # Actualizar la posición del reproductor
-        ##self.player.setPosition(position)
-        
-        # Actualizar el estado del reproductor
-        print('actualiza cancion')
-        if state == QMediaPlayer.PlayingState:
-            self.player.play()
-            self.view.playButton.setText("Pausar")
-        elif state == QMediaPlayer.PausedState:
-            self.player.pause()
-            self.view.playButton.setText("Renaudar")
-        
-        # Actualizar la interfaz de usuario
-        ##self.view.progressBar.setValue(position)
-        #self.view.currentTimeLabel.setText(QTime(0, 0).addMSecs(position).toString("mm:ss"))
+    @Pyro5.api.expose #llamo al hilo principal
+    def mainThread(self, song_name, position, state , duration):
+        self.update_gui_signal.emit(song_name, position, state ,duration)
+
+    
+    @pyqtSlot(str, str, str, str)
+    def update_song_state(self, song_name, position, state , duration):
+        try:
+            print("pasando")
+            print(song_name)
+            print(self.current_song)
+            print(position)
+            print(state)
+            print(duration)
+
+            if str(song_name) != str(self.current_song):
+                self.current_song = song_name
+            
+            self.view.warningLabel.setText("SEGUNDO RECIBIDOS DE LA CANCION {}".format(position))
+            self.view.warningLabel.setVisible(True)
+
+            # Convertir posición y duración a milisegundos
+            position_milliseconds = self.convert_to_milliseconds(position)
+            duration_milliseconds = self.convert_to_milliseconds(duration)
+
+            print(f"Position en milisegundos: {position_milliseconds} (Tipo: {type(position_milliseconds)})")
+            print(f"Duration en milisegundos: {duration_milliseconds} (Tipo: {type(duration_milliseconds)})")
+
+            self.player.setPosition(position_milliseconds)
+
+            # Actualizar el estado del reproductor
+            print('actualiza cancion')
+            self.playSong()
+            #if state == 'reproduciendo':
+              #  self.player.play()
+                #self.view.playButton.setText("Pausar")
+           # elif state == 'pausado':
+               # self.player.pause()
+               # self.view.playButton.setText("Renaudar")
+            
+            # Actualizar la interfaz de usuario
+            self.updateProgressBar(position_milliseconds) 
+            self.updateProgressBarRange(duration_milliseconds)
+            
+
+        except Exception as e:
+            print(f"Error en update_song_state: {e}")
+
+    def convert_to_milliseconds(self, time):
+        if isinstance(time, str):
+            try:
+                minutes, seconds = map(int, time.split(':'))
+                return (minutes * 60 + seconds) * 1000
+            except ValueError:
+                print(f"Error al convertir el tiempo: {time}")
+                return 0
 
     #cliente se conecta llama a este metodo para obtener estado actual de cancion
     def request_initial_state(self):
         if self.current_playlist:
-            state = self.client.get_playlist_state(self.current_playlist) #metodo al servidor
-            if state:
-                self.update_song_state(self, state['song'], state['position'], state['state'] )
+            try:
+                state = self.client.get_playlist_state(self.current_playlist)
+                if state:
+                    self.update_song_state(state['song'], state['position'], state['state'])
+            except Exception as e:
+                print(f"Error al solicitar el estado inicial de la playlist: {e}")
 
+    #recibo el clock del el servidor para actualizar el clock del cliente
+    def receive_update(self, playlist_name, state, clock):
+        if playlist_name not in self.vector_clocks:
+            num_clients = len(self.servidor.get_clients_in_playlist(playlist_name))
+            self.vector_clocks[playlist_name] = RelojVectorial(num_clients)
+        self.vector_clocks[playlist_name].fusionar(clock)
+        # Actualizar la interfaz o estado local según el estado recibido
+        print(f"Actualización recibida para playlist {playlist_name}: {state}, Reloj: {self.vector_clocks[playlist_name]}")
+    
     def stopSong(self):
         self.player.stop()
         self.view.playButton.setText("Reproducir")
@@ -167,7 +249,7 @@ class MusicPlayerController:
         current_time = QTime(0, 0).addMSecs(position)
         self.view.currentTimeLabel.setText(current_time.toString("mm:ss"))
     
-    def updateProgressBarRange(self, duration):
+    def updateProgressBarRange(self, duration): #asegura el rango de la barra usar cuando cambiemos de cancion
         self.view.progressBar.setRange(0, duration)
         total_time = QTime(0, 0).addMSecs(duration)
         self.view.durationTimeLabel.setText(total_time.toString("mm:ss"))
@@ -207,9 +289,9 @@ class MusicPlayerController:
         cursor = conn.cursor()
         cursor.execute("SELECT song_id FROM songs WHERE name = (?)", (name,))
         song_id = cursor.fetchone()
-        cursor.execute("SELECT playlist_id FROM playlist WHERE name = (?)", (playlist,))
-        playlist_id = cursor.fetchone()
-        cursor.execute("DELETE FROM songs_playlist WHERE song_id = (?) AND playlist_id = (?)", (song_id[0], playlist_id[0]))
+        cursor.execute("SELECT playlist_name FROM playlist WHERE name = (?)", (playlist,))
+        playlist_name = cursor.fetchone()
+        cursor.execute("DELETE FROM songs_playlist WHERE song_id = (?) AND playlist_name = (?)", (song_id[0], playlist_name[0]))
         conn.commit()
         conn.close()
         
@@ -237,4 +319,20 @@ class MusicPlayerController:
         cursor.execute("SELECT songs.name FROM songs_playlist INNER JOIN songs ON songs.song_id = songs_playlist.song_id WHERE songs_playlist.playlist_id = ?",  (playlist_id[0],))
         songs = cursor.fetchall()
         return songs
+
+    def initialize_vector_clock(self, playlist_name):
+        # Obtener los user_id en la playlist
+        user_ids = self.load_user_ids_in_playlist(playlist_name)
+
+        # Crear un reloj vectorial de longitud igual al número de usuarios en la playlist
+        vector_clock = [0] * len(user_ids)
+
+        # Asignar la posición en el vector basada en el orden de los IDs (o algún criterio)
+        self.vector_position = user_ids.index(self.user_id)
+
+        return vector_clock
+
+
+
+        
         

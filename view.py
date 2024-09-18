@@ -28,6 +28,8 @@ class MusicPlayerView(QMainWindow):
         self.addSongButton = QPushButton('Agregar canción')
         self.seePlaylistsButton = QPushButton('Playlist compartidas')
         self.removeSongButton = QPushButton('Borrar canción')
+        self.sharePlaylistButton = QPushButton('Hacer colaborativa')
+
 
         self.playButton = QPushButton('Reproducir')
         self.stopButton = QPushButton('Parar')
@@ -49,6 +51,7 @@ class MusicPlayerView(QMainWindow):
         buttonLayout = QHBoxLayout()
         buttonLayout.addWidget(self.addSongButton)
         buttonLayout.addWidget(self.seePlaylistsButton)
+        buttonLayout.addWidget(self.sharePlaylistButton)
         buttonLayout.addWidget(self.removeSongButton)
 
         controlLayout = QHBoxLayout()
