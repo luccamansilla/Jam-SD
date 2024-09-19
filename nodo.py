@@ -6,6 +6,7 @@ import socket
 import threading
 import time
 import random
+import sqlite3 as db
 
 
 save_directory = ".\songs"
@@ -52,27 +53,6 @@ class Testclass(object):
         # Devuelve la lista de clientes basados en los usuarios obtenidos
         return [self.clients.get(user_id) for user_id, _ in usuarios if user_id in self.clients]
 
-    #metodo para obtener el path de la cancion
-    def get_song_path(self, song_name):
-        try:
-            cursor = self.db_connection.cursor()
-            cursor.execute("""
-                SELECT path
-                FROM songs
-                WHERE name = ?
-            """, (song_name,))
-
-            song_row = cursor.fetchone()
-            cursor.close()
-            # Verificar si se encontró la canción y devolver su path
-            if song_row:
-                return song_row[0]  # Devolver el path
-            else:
-                return None  # Canción no encontrada
-        except Exception as e:
-            print(f"Error al obtener el path de la canción: {e}")
-            return None
-
 
     #actualizo el clock de cada cliente en la playlist
     def update_state(self, playlist_name, state, clock):
@@ -106,11 +86,28 @@ class Testclass(object):
         for client_uri in self.clientes:
             print(self.clients)
             try:
-                # path = get_song_path(state['song']) path tengo q mandar por state['song']
+                path = self.get_song_path(state['song'])
                 proxy = Pyro5.api.Proxy(client_uri)
-                proxy.mainThread(state['song'], state['position'], state['state'] , state['duration'])
+                proxy.mainThread(path, state['position'], state['state'] , state['duration'])
             except Exception as e:
                 print(f"Error al sincronizar con cliente para actualizar canciones {client_uri}: {e}")
+
+    @Pyro5.api.expose
+    def get_song_path(self, song_name):
+        conn = self.connect_db()
+        cursor = conn.cursor()
+
+        # Consulta para obtener el path de la canción dado su nombre
+        cursor.execute("SELECT path FROM songs WHERE name = ?", (song_name,))
+        song_path = cursor.fetchone()
+
+        if song_path is not None:
+            return song_path[0]  # Devolver solo el path
+        else:
+            return None  # Si no se encuentra la canción, retornar None
+
+    def connect_db(self):
+        return db.connect('spotify.db')
    
     @Pyro5.api.expose
     def get_playlist_state(self, playlist_name):

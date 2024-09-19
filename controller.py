@@ -122,7 +122,7 @@ class MusicPlayerController(QObject):
             self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'pausado', duration)
         #reproductor = pausado
         elif self.player.state() == QMediaPlayer.PausedState:
-            self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'reproduciendo', duration)
+            self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'renaudar', duration)
         else:
             # Primera vez que se reproduce una canción
             song_path = os.path.join(os.getcwd(), 'songs', song_name)
@@ -142,7 +142,7 @@ class MusicPlayerController(QObject):
                 duration = self.player.duration()
                 if duration > 0:
                     print(f"Esperando duración completa antes de iniciar{duration}")
-                    self.client.update_playlist_state(self.current_playlist, song_path, current_time, 'reproduciendo',duration = self.view.durationTimeLabel.text())
+                    self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'reproduciendo',duration = self.view.durationTimeLabel.text())
                 else:
                     QTimer.singleShot(100, wait_for_duration)
 
@@ -157,6 +157,9 @@ class MusicPlayerController(QObject):
     @pyqtSlot(str, str, str, str)
     def update_song_state(self, song_path, position, state , duration):
         try:
+            path = os.path.join(os.getcwd(), song_path)
+            print(path)
+
             #if str(song_name) != str(self.current_song):
              #   self.current_song = song_name
             
@@ -174,10 +177,13 @@ class MusicPlayerController(QObject):
                 self.view.playButton.setText("Reanudar")
             elif state == 'reproduciendo':
                 if song_path:  # Si se recibe el path, configurar el media
-                    url = QUrl.fromLocalFile(song_path)
+                    url = QUrl.fromLocalFile(path)
                     content = QMediaContent(url)
                     self.player.setMedia(content)
                     self.player.play()
+                self.view.playButton.setText("Pausar")
+            elif state == 'renaudar':
+                self.player.play()
                 self.view.playButton.setText("Pausar")
             
             # Actualizar la interfaz de usuario
@@ -251,7 +257,8 @@ class MusicPlayerController(QObject):
     def insertSong(self, name, path, playlist):
         conn = self.connect_db()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO songs (name, path) VALUES (?, ?)", (name, path))
+        pathNew = "songs/"+path
+        cursor.execute("INSERT INTO songs (name, path) VALUES (?, ?)", (name, pathNew))
         song_id = cursor.lastrowid
         cursor.execute("SELECT playlist_id FROM playlist WHERE name = (?)", (playlist,))
         playlist_id = cursor.fetchone()
