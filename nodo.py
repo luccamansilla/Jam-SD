@@ -52,6 +52,28 @@ class Testclass(object):
         # Devuelve la lista de clientes basados en los usuarios obtenidos
         return [self.clients.get(user_id) for user_id, _ in usuarios if user_id in self.clients]
 
+    #metodo para obtener el path de la cancion
+    def get_song_path(self, song_name):
+        try:
+            cursor = self.db_connection.cursor()
+            cursor.execute("""
+                SELECT path
+                FROM songs
+                WHERE name = ?
+            """, (song_name,))
+
+            song_row = cursor.fetchone()
+            cursor.close()
+            # Verificar si se encontró la canción y devolver su path
+            if song_row:
+                return song_row[0]  # Devolver el path
+            else:
+                return None  # Canción no encontrada
+        except Exception as e:
+            print(f"Error al obtener el path de la canción: {e}")
+            return None
+
+
     #actualizo el clock de cada cliente en la playlist
     def update_state(self, playlist_name, state, clock):
         current_clock.fusionar(clock)
@@ -77,7 +99,6 @@ class Testclass(object):
 
     #sincroniza a todos los clientes el estado de la cancion
     def sync_clients(self, playlist_name):
-        print("entre")
         if playlist_name not in self.songs_states:
             return
         
@@ -85,8 +106,8 @@ class Testclass(object):
         for client_uri in self.clientes:
             print(self.clients)
             try:
+                # path = get_song_path(state['song']) path tengo q mandar por state['song']
                 proxy = Pyro5.api.Proxy(client_uri)
-                print("pasando")
                 proxy.mainThread(state['song'], state['position'], state['state'] , state['duration'])
             except Exception as e:
                 print(f"Error al sincronizar con cliente para actualizar canciones {client_uri}: {e}")

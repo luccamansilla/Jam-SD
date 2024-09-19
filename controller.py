@@ -106,7 +106,7 @@ class MusicPlayerController(QObject):
             self.onPlaylistSelected()
             # self.view.songList.takeItem(self.view.songList.row(selected_song))
 
-    def playSong(self, state=None, position=None):
+    def playSong(self):
         selected_song = self.view.songList.currentItem()
         song_name = selected_song.text() if selected_song else None
         current_time = self.view.currentTimeLabel.text() or '0:0'
@@ -115,63 +115,38 @@ class MusicPlayerController(QObject):
         if not selected_song and not state:
             self.view.warningLabel.setText("No seleccionó ninguna canción")
             self.view.warningLabel.setVisible(True)
-            return
+            return        
 
-        # Si el estado proviene de otro cliente
-        if state:  
-            if state == 'pausado' and self.player.state() != QMediaPlayer.PausedState:
-                self.player.pause()
-                self.view.playButton.setText("Reanudar")
-                self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'pausado', duration)
+        # reproductor = reproduciendo
+        if self.player.state() == QMediaPlayer.PlayingState:
+            self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'pausado', duration)
+        #reproductor = pausado
+        elif self.player.state() == QMediaPlayer.PausedState:
+            self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'reproduciendo', duration)
+        else:
+            # Primera vez que se reproduce una canción
+            song_path = os.path.join(os.getcwd(), 'songs', song_name)
+            if not os.path.exists(song_path):
+                self.view.warningLabel.setText("Archivo de canción no encontrado")
+                self.view.warningLabel.setVisible(True)
+                return
 
-            elif state == 'reproduciendo' and self.player.state() != QMediaPlayer.PlayingState:
-                # Establecer la posición si es que se envió
-                if position:
-                    position_milliseconds = self.convert_to_milliseconds(position)
-                    self.player.setPosition(position_milliseconds)
-                self.player.play()
-                self.view.playButton.setText("Pausar")
-                self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'reproduciendo', duration)
+            url = QUrl.fromLocalFile(song_path)
+            content = QMediaContent(url)
+            self.player.setMedia(content)
+            self.player.play()
+            self.view.playButton.setText("Pausar")
 
-        # Si no se recibe estado externo, usar la lógica local
-        else:  
-            if self.player.state() == QMediaPlayer.PlayingState:
-                # Pausar la reproducción local y notificar a los demás clientes
-                self.player.pause()
-                self.view.playButton.setText("Reanudar")
-                self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'pausado', duration)
+            # Esperar la duración y actualizar el estado con los otros clientes
+            def wait_for_duration():
+                duration = self.player.duration()
+                if duration > 0:
+                    print(f"Esperando duración completa antes de iniciar{duration}")
+                    self.client.update_playlist_state(self.current_playlist, song_path, current_time, 'reproduciendo',duration = self.view.durationTimeLabel.text())
+                else:
+                    QTimer.singleShot(100, wait_for_duration)
 
-            elif self.player.state() == QMediaPlayer.PausedState:
-                # Reanudar la reproducción local y notificar a los demás clientes
-                self.player.play()
-                self.view.playButton.setText("Pausar")
-                self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'reproduciendo', duration)
-
-            else:
-                # Primera vez que se reproduce una canción
-                song_path = os.path.join(os.getcwd(), 'songs', song_name)
-                if not os.path.exists(song_path):
-                    self.view.warningLabel.setText("Archivo de canción no encontrado")
-                    self.view.warningLabel.setVisible(True)
-                    return
-
-                url = QUrl.fromLocalFile(song_path)
-                content = QMediaContent(url)
-                self.player.setMedia(content)
-                self.player.play()
-                self.view.playButton.setText("Pausar")
-
-                # Esperar la duración y actualizar el estado con los otros clientes
-                def wait_for_duration():
-                    duration = self.player.duration()
-                    if duration > 0:
-                        print("paso3")
-                        self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'reproduciendo', duration)
-                    else:
-                        QTimer.singleShot(100, wait_for_duration)
-
-                wait_for_duration()
-
+            wait_for_duration()
 
 
     @Pyro5.api.expose #llamo al hilo principal
@@ -180,10 +155,10 @@ class MusicPlayerController(QObject):
 
     
     @pyqtSlot(str, str, str, str)
-    def update_song_state(self, song_name, position, state , duration):
+    def update_song_state(self, song_path, position, state , duration):
         try:
-            if str(song_name) != str(self.current_song):
-                self.current_song = song_name
+            #if str(song_name) != str(self.current_song):
+             #   self.current_song = song_name
             
             self.view.warningLabel.setText("SEGUNDO RECIBIDOS DE LA CANCION {}".format(position))
             self.view.warningLabel.setVisible(True)
@@ -192,26 +167,23 @@ class MusicPlayerController(QObject):
             position_milliseconds = self.convert_to_milliseconds(position)
             duration_milliseconds = self.convert_to_milliseconds(duration)
 
-            print(f"Position en milisegundos: {position_milliseconds} (Tipo: {type(position_milliseconds)})")
-            print(f"Duration en milisegundos: {duration_milliseconds} (Tipo: {type(duration_milliseconds)})")
-
             self.player.setPosition(position_milliseconds)
-            
-            # Si el estado es 'reproduciendo', comenzar la reproducción si no está ya reproduciendo
-            if state == 'reproduciendo' and self.player.state() != QMediaPlayer.PlayingState:
-                print("paso1")
-                self.playSong(state=state, position=position)
 
-            # Si el estado es 'pausado', pausar la canción si está reproduciendo
-            elif state == 'pausado' and self.player.state() == QMediaPlayer.PlayingState:
-                print("paso2")
-                self.playSong(state=state, position=position)
+            if state == 'pausado':
+                self.player.pause()
+                self.view.playButton.setText("Reanudar")
+            elif state == 'reproduciendo':
+                if song_path:  # Si se recibe el path, configurar el media
+                    url = QUrl.fromLocalFile(song_path)
+                    content = QMediaContent(url)
+                    self.player.setMedia(content)
+                    self.player.play()
+                self.view.playButton.setText("Pausar")
             
             # Actualizar la interfaz de usuario
             self.updateProgressBar(position_milliseconds) 
             self.updateProgressBarRange(duration_milliseconds)
             
-
         except Exception as e:
             print(f"Error en update_song_state: {e}")
 
@@ -230,7 +202,7 @@ class MusicPlayerController(QObject):
             try:
                 state = self.client.get_playlist_state(self.current_playlist)
                 if state:
-                    self.update_song_state(state['song'], state['position'], state['state'] , state['position'])
+                    self.mainThread(state['song'], state['position'], state['state'] , state['position'])
             except Exception as e:
                 print(f"Error al solicitar el estado inicial de la playlist: {e}")
 
