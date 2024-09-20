@@ -123,6 +123,7 @@ class MusicPlayerController(QObject):
         #reproductor = pausado
         elif self.player.state() == QMediaPlayer.PausedState:
             self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'renaudar', duration)
+    
         else:
             # Primera vez que se reproduce una canción
             song_path = os.path.join(os.getcwd(), 'songs', song_name)
@@ -158,11 +159,6 @@ class MusicPlayerController(QObject):
     def update_song_state(self, song_path, position, state , duration):
         try:
             path = os.path.join(os.getcwd(), song_path)
-            print(path)
-
-            #if str(song_name) != str(self.current_song):
-             #   self.current_song = song_name
-            
             self.view.warningLabel.setText("SEGUNDO RECIBIDOS DE LA CANCION {}".format(position))
             self.view.warningLabel.setVisible(True)
 
@@ -176,7 +172,7 @@ class MusicPlayerController(QObject):
                 self.player.pause()
                 self.view.playButton.setText("Reanudar")
             elif state == 'reproduciendo':
-                if song_path:  # Si se recibe el path, configurar el media
+                if song_path:  
                     url = QUrl.fromLocalFile(path)
                     content = QMediaContent(url)
                     self.player.setMedia(content)
@@ -185,6 +181,9 @@ class MusicPlayerController(QObject):
             elif state == 'renaudar':
                 self.player.play()
                 self.view.playButton.setText("Pausar")
+            elif state == 'stop':
+                self.player.stop()
+                self.view.playButton.setText("Reproducir")
             
             # Actualizar la interfaz de usuario
             self.updateProgressBar(position_milliseconds) 
@@ -222,8 +221,12 @@ class MusicPlayerController(QObject):
         print(f"Actualización recibida para playlist {playlist_name}: {state}, Reloj: {self.vector_clocks[playlist_name]}")
     
     def stopSong(self):
-        self.player.stop()
-        self.view.playButton.setText("Reproducir")
+        selected_song = self.view.songList.currentItem()
+        song_name = selected_song.text() if selected_song else None
+        current_time = self.view.currentTimeLabel.text() or '0:0'
+        duration = self.view.durationTimeLabel.text() or '0:0'
+        self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'stop', duration)
+
 
     def updateProgressBar(self, position):
         self.view.progressBar.setValue(position)
