@@ -44,6 +44,7 @@ class MusicPlayerController(QObject):
 
         self.update_gui_signal.connect(self.update_song_state)#conecion al principa;
         self.view.addSongButton.clicked.connect(self.addSong)
+        self.view.sharePlaylistButton.clicked.connect(self.makeCollaborative)
         self.view.seePlaylistsButton.clicked.connect(self.viewPlaylists)
         self.view.removeSongButton.clicked.connect(self.removeSong)
         self.view.playButton.clicked.connect(self.playSong)
@@ -106,13 +107,19 @@ class MusicPlayerController(QObject):
             self.onPlaylistSelected()
             # self.view.songList.takeItem(self.view.songList.row(selected_song))
 
+
+    #hacer playlist colaborativa
+    def makeCollaborative(self):
+        self.client.insert_playlist() #mandarle el nombre de playlist de donde?
+
+
     def playSong(self):
         selected_song = self.view.songList.currentItem()
         song_name = selected_song.text() if selected_song else None
         current_time = self.view.currentTimeLabel.text() or '0:0'
         duration = self.view.durationTimeLabel.text() or '0:0'
 
-        if not selected_song and not state:
+        if not selected_song :
             self.view.warningLabel.setText("No seleccionó ninguna canción")
             self.view.warningLabel.setVisible(True)
             return        

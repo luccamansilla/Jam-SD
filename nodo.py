@@ -33,15 +33,18 @@ class Testclass(object):
     def get_clients_in_playlist(self, playlist_name):
         self.db_connection = db_connection
         cursor = self.db_connection.cursor()
+
         # Obtener el ID de la playlist basado en su nombre
         cursor.execute("SELECT playlist_id FROM playlist WHERE name = ?", (playlist_name,))
         playlist_row = cursor.fetchone()
         if not playlist_row:
             return []  # Playlist no encontrada
+
         playlist_id = playlist_row[0]
-        # Obtener los usuarios que están en la playlist
+
+        # Obtener los usuarios que están en la playlist junto con sus URIs
         cursor.execute("""
-            SELECT users.user_id, users.name
+            SELECT users.user_id, users.uri
             FROM users
             JOIN users_playlist ON users.user_id = users_playlist.user_id
             WHERE users_playlist.playlist_id = ?
@@ -50,8 +53,9 @@ class Testclass(object):
         usuarios = cursor.fetchall()
         cursor.close()
 
-        # Devuelve la lista de clientes basados en los usuarios obtenidos
-        return [self.clients.get(user_id) for user_id, _ in usuarios if user_id in self.clients]
+        # Convertir las URIs de cadena a objetos Pyro URI y devolverlas
+        return [Pyro5.api.URI(uri) for _, uri in usuarios]
+
 
 
     #actualizo el clock de cada cliente en la playlist
@@ -84,7 +88,6 @@ class Testclass(object):
         
         state = self.songs_states[playlist_name]
         for client_uri in self.clientes:
-            print(self.clients)
             try:
                 path = self.get_song_path(state['song'])
                 proxy = Pyro5.api.Proxy(client_uri)
@@ -122,10 +125,20 @@ class Testclass(object):
             except Exception as e:
                 print(f"Error al notificar al cliente {cliente}: {e}")
 
+
     @Pyro5.api.expose
     def register_client(self, client):
         self.clientes.append(client)
+        self.insert_client("nombre",client)
         print(f"Cliente registrado: {client}")
+
+    def insert_client(self, client_name, client_uri):
+        conn = self.connect_db()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO users (name, uri) VALUES (?, ?)", (client_name, str(client_uri)))
+        conn.commit()
+        conn.close()
+
 
     def transfer(self, data, filename):
         if Pyro5.api.config.SERIALIZER == "serpent" and isinstance(data, dict):
