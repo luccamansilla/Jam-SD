@@ -8,7 +8,9 @@ CREATE TABLE playlist (
 CREATE TABLE songs (
     song_id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    path TEXT NOT NULL
+    path TEXT NOT NULL,
+    uri TEXT NOT NULL
+
 );
 
 -- Crear la tabla intermedia entre canciones y playlists (songs_playlist)

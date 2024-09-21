@@ -31,17 +31,20 @@ class Testclass(object):
         self.clientes = []
 
     def get_clients_in_playlist(self, playlist_name):
-        self.db_connection = db_connection
-        cursor = self.db_connection.cursor()
+        conn = self.connect_db()
+        cursor = conn.cursor()
+
         # Obtener el ID de la playlist basado en su nombre
         cursor.execute("SELECT playlist_id FROM playlist WHERE name = ?", (playlist_name,))
         playlist_row = cursor.fetchone()
         if not playlist_row:
             return []  # Playlist no encontrada
+
         playlist_id = playlist_row[0]
-        # Obtener los usuarios que están en la playlist
+
+        # Obtener los usuarios que están en la playlist junto con sus URIs
         cursor.execute("""
-            SELECT users.user_id, users.name
+            SELECT users.user_id, users.uri
             FROM users
             JOIN users_playlist ON users.user_id = users_playlist.user_id
             WHERE users_playlist.playlist_id = ?
@@ -50,8 +53,47 @@ class Testclass(object):
         usuarios = cursor.fetchall()
         cursor.close()
 
-        # Devuelve la lista de clientes basados en los usuarios obtenidos
-        return [self.clients.get(user_id) for user_id, _ in usuarios if user_id in self.clients]
+        # Convertir las URIs de cadena a objetos Pyro URI y devolverlas
+        return [Pyro5.api.URI(uri) for _, uri in usuarios]
+
+
+    @Pyro5.api.expose
+    def insert_playlist_in_users_playlist(self, current_playlist, client_uri):
+        try:
+            conn = self.connect_db()
+            cursor = conn.cursor()
+            client_uri_str = str(client_uri)
+            
+            # Paso 1: Buscar el ID de la playlist basado en current_playlist
+            cursor.execute("SELECT playlist_id FROM playlist WHERE name = ?", (current_playlist,))
+            playlist_result = cursor.fetchone()
+
+            if playlist_result:
+                playlist_id = playlist_result[0]
+            else:
+                raise Exception(f"No se encontró la playlist con nombre: {current_playlist}")
+            
+            # Paso 2: Buscar el ID del usuario basado en client_uri
+            cursor.execute("SELECT user_id FROM users WHERE uri = ?", (client_uri_str,))
+            user_result = cursor.fetchone()
+
+            if user_result:
+                user_id = user_result[0]
+            else:
+                raise Exception(f"No se encontró el usuario con URI: {client_uri}")
+            
+            # Paso 3: Insertar en la tabla users_playlist (user_id, playlist_id, user_leader)
+            cursor.execute("INSERT INTO users_playlist (user_id, playlist_id, user_leader) VALUES (?, ?, ?)", 
+                        (user_id, playlist_id, 1))  # user_leader será 1
+
+            conn.commit()
+            print(f"El usuario con id:  {user_id} hizo colaborativa la playlist con id : {playlist_id}")
+            
+        except Exception as e:
+            print(f"Error al insertar el usuario en la playlist: {e}")
+        finally:
+            conn.close()
+
 
     #actualizo el clock de cada cliente en la playlist
     def update_state(self, playlist_name, state, clock):
@@ -73,24 +115,39 @@ class Testclass(object):
             'state': state,
             'duration': duration
         }
-        print(self.songs_states)
         self.sync_clients(playlist_name)
 
     #sincroniza a todos los clientes el estado de la cancion
     def sync_clients(self, playlist_name):
-        print("entre")
         if playlist_name not in self.songs_states:
             return
-        
+
+        #clients = self.get_clients_in_playlist(playlist_name) ACA OBTENGO DE LA BASE DE DATOS
         state = self.songs_states[playlist_name]
-        for client_uri in self.clientes:
-            print(self.clients)
+        for client_uri in self.clientes: #aca tengo q poner clients asi recorre los que trae la base
             try:
+                path = self.get_song_path(state['song'])
                 proxy = Pyro5.api.Proxy(client_uri)
-                print("pasando")
-                proxy.mainThread(state['song'], state['position'], state['state'] , state['duration'])
+                proxy.mainThread(path, state['position'], state['state'] , state['duration'])
             except Exception as e:
                 print(f"Error al sincronizar con cliente para actualizar canciones {client_uri}: {e}")
+
+    @Pyro5.api.expose
+    def get_song_path(self, song_name):
+        conn = self.connect_db()
+        cursor = conn.cursor()
+
+        # Consulta para obtener el path de la canción dado su nombre
+        cursor.execute("SELECT path FROM songs WHERE name = ?", (song_name,))
+        song_path = cursor.fetchone()
+
+        if song_path is not None:
+            return song_path[0]  # Devolver solo el path
+        else:
+            return None  # Si no se encuentra la canción, retornar None
+
+    def connect_db(self):
+        return db.connect('spotify.db')
    
     @Pyro5.api.expose
     def get_playlist_state(self, playlist_name):
@@ -98,17 +155,39 @@ class Testclass(object):
 
     @Pyro5.api.expose
     def notify_clients(self): 
-        for cliente in self.clientes:
+            
+        #clients = self.get_clients_in_playlist(playlist_name) ACA OBTENGO DE LA BASE DE DATOS
+        for cliente in self.clientes:#aca tengo q poner clients asi recorre los que trae la base
             try:
                 client_proxy = Pyro5.api.Proxy(cliente)  # Crea un proxy para el cliente
                 client_proxy.onPlaylistSelected()  # Llama al método expuesto en el cliente
             except Exception as e:
                 print(f"Error al notificar al cliente {cliente}: {e}")
 
+
     @Pyro5.api.expose
     def register_client(self, client):
         self.clientes.append(client)
+        self.insert_client("nombre",client)
         print(f"Cliente registrado: {client}")
+
+    @Pyro5.api.expose
+    def insert_client(self, client_name, client_uri):
+        conn = self.connect_db()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO users (name, uri) VALUES (?, ?)", (client_name, str(client_uri)))
+        conn.commit()
+        conn.close()
+
+    @Pyro5.api.expose
+    def update_is_shared(self, playlist_name):
+        conn = self.connect_db()
+        cursor = conn.cursor()
+        # Actualizar el valor de is_shared a 1 para la playlist específica
+        cursor.execute("UPDATE playlist SET is_shared = 1 WHERE name = ?", (playlist_name,))        
+        conn.commit()
+        conn.close()
+
 
     def transfer(self, data, filename):
         if Pyro5.api.config.SERIALIZER == "serpent" and isinstance(data, dict):
