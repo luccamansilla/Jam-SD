@@ -62,28 +62,13 @@ class MusicPlayerController(QObject):
 
         self.client.insert_client(self.user_name,self.client_uri)
         self.updatePlaylists()
-
-
-    def getUserName(self):
-        # Crear el diálogo para obtener el nombre de usuario
-        dialog = UserDialog()
-        
-        # Mostrar el diálogo de forma modal (espera a que se cierre para continuar)
-        if dialog.exec_() == QDialog.Accepted:
-            return dialog.getUserName()
-        return "UsuarioDesconocido"  # Valor por defecto si no se ingresa nada
-
         
     @pyqtSlot()  
     def onPlaylistSelected(self): #me dice en que playlist estoy
         self.formatted_name = f"{self.user_name}Playlist"
         self.view.setWindowTitle(f"Reproductor de música - Playlist: {self.formatted_name}")
         self.view.songList.clear()
-<<<<<<< HEAD
-        songs = self.client.load_songs(self.formatted_name)
-=======
-        songs = self.client.load_songs(self.view.playlistComboBox.currentText())
->>>>>>> 06f4137d06a90c358e859a68a081ba7df7040644
+        songs = self.client.client.load_songs(self.formatted_name)
         for song in songs:
             self.view.songList.addItem(song[0])
             # playlist_widget.addItem(playlist[1])
