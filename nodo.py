@@ -271,7 +271,57 @@ class Testclass(object):
             if self.lider is None or not self.activo:
                 print(f"Nodo {self.id} detecta que el líder ha fallado, iniciando elección...")
                 self.iniciar_eleccion()
+      
+    def notifyClientsSongs(self):
+        print(f"Clientes conectados: {self.clients}")
+        for client_uri in self.clientes:
+            print(self.clients)
+            try:
+                proxy = Pyro5.api.Proxy(client_uri)
+                print(f"pasando {client_uri}")
+                proxy.mainThreadUpdateSongs()
+            except Exception as e:
+                print(f"Error al sincronizar con cliente para actualizar canciones {client_uri}: {e}")
+   
+                
+    # CONSULTAS A LA BD
+    
+    def connect_db(self):
+        return db.connect('spotify.db')
+    
+    def get_playlists(self):
+        conn = self.connect_db()
+        cursor = conn.cursor()
 
+        cursor.execute("SELECT * FROM playlist WHERE is_shared = 0")
+        playlists = cursor.fetchall()
+
+        conn.close()
+        return playlists
+
+    @Pyro5.api.expose
+    def insertSong(self, name, path, playlist):
+        conn = self.connect_db()
+        cursor = conn.cursor()
+        pathNew = "/songs/"+path
+        cursor.execute("INSERT INTO songs (name, path) VALUES (?, ?)", (name, pathNew))
+        song_id = cursor.lastrowid
+        cursor.execute("SELECT playlist_id FROM playlist WHERE name = (?)", (playlist,))
+        playlist_id = cursor.fetchone()
+        cursor.execute("INSERT INTO songs_playlist (song_id, playlist_id, user_upload_id) VALUES (?, ?, ?)", (song_id, playlist_id[0], "1"))
+        conn.commit()
+        conn.close()
+        self.notifyClientsSongs()
+        
+    @Pyro5.api.expose          
+    def load_songs(self, playlist_name):
+        conn = self.connect_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT playlist_id FROM playlist WHERE name = (?)", (playlist_name,))
+        playlist_id = cursor.fetchone()
+        cursor.execute("SELECT songs.name FROM songs_playlist INNER JOIN songs ON songs.song_id = songs_playlist.song_id WHERE songs_playlist.playlist_id = ?",  (playlist_id[0],))
+        songs = cursor.fetchall()
+        return songs
 
 if __name__ == "__main__":
     node_id =1 #int(sys.argv[1])  # Toma el ID del nodo desde los argumentos de línea de comandos

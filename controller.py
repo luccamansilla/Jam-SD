@@ -14,6 +14,7 @@ from PyQt5.QtCore import QTimer
 class MusicPlayerController(QObject):
     
     update_gui_signal = pyqtSignal(str, str, str, str)  # Define la señal (ej: para actualizar canción, posición, estado)
+    update_gui_signalSongs  = pyqtSignal()
     
     def __init__(self, view):
         super().__init__()  # Asegúrate de llamar al constructor de QObject
@@ -47,6 +48,7 @@ class MusicPlayerController(QObject):
 
 
         self.update_gui_signal.connect(self.update_song_state)#conecion al principa;
+        self.update_gui_signalSongs.connect(self.onPlaylistSelected)#conecion al principa;
         self.view.addSongButton.clicked.connect(self.addSong)
         self.view.sharePlaylistButton.clicked.connect(self.makeCollaborative)
         self.view.seePlaylistsButton.clicked.connect(self.viewPlaylists)
@@ -72,12 +74,16 @@ class MusicPlayerController(QObject):
         return "UsuarioDesconocido"  # Valor por defecto si no se ingresa nada
 
         
-    @Pyro5.api.expose    
+    @pyqtSlot()  
     def onPlaylistSelected(self): #me dice en que playlist estoy
         self.formatted_name = f"{self.user_name}Playlist"
         self.view.setWindowTitle(f"Reproductor de música - Playlist: {self.formatted_name}")
         self.view.songList.clear()
+<<<<<<< HEAD
         songs = self.client.load_songs(self.formatted_name)
+=======
+        songs = self.client.load_songs(self.view.playlistComboBox.currentText())
+>>>>>>> 06f4137d06a90c358e859a68a081ba7df7040644
         for song in songs:
             self.view.songList.addItem(song[0])
             # playlist_widget.addItem(playlist[1])
@@ -188,6 +194,10 @@ class MusicPlayerController(QObject):
     @Pyro5.api.expose #llamo al hilo principal
     def mainThread(self, song_name, position, state , duration):
         self.update_gui_signal.emit(song_name, position, state ,duration)
+        
+    @Pyro5.api.expose #llamo al hilo principal para actualizar canciones
+    def mainThreadUpdateSongs(self):
+        self.update_gui_signalSongs.emit()
 
     
     @pyqtSlot(str, str, str, str)
