@@ -68,7 +68,7 @@ class MusicPlayerController(QObject):
         self.formatted_name = f"{self.user_name}Playlist"
         self.view.setWindowTitle(f"Reproductor de música - Playlist: {self.formatted_name}")
         self.view.songList.clear()
-        songs = self.client.client.load_songs(self.formatted_name)
+        songs = self.client.load_songs(self.formatted_name)
         for song in songs:
             self.view.songList.addItem(song[0])
             # playlist_widget.addItem(playlist[1])
@@ -91,6 +91,14 @@ class MusicPlayerController(QObject):
 
         self.playlistDialog.exec_()  # Muestra el diálogo
 
+    def getUserName(self):
+            # Crear el diálogo para obtener el nombre de usuario
+            dialog = UserDialog()
+
+            # Mostrar el diálogo de forma modal (espera a que se cierre para continuar)
+            if dialog.exec_() == QDialog.Accepted:
+                return dialog.getUserName()
+            return "UsuarioDesconocido"  # Valor por defecto si no se ingresa nada
 
 
     def updatePlaylists(self):
@@ -109,10 +117,10 @@ class MusicPlayerController(QObject):
             try:
                 self.client.transfer(data, filename)
                 self.formatted_name = f"{self.user_name}Playlist"
-                self.insertSong(filename, filename, self.formatted_name)
-                print(self.user_name)
-                self.client.notify_clients(self.formatted_name) 
-                self.onPlaylistSelected()
+                self.client.insertSong(filename, filename, self.formatted_name)
+                # print(self.user_name)
+                # self.client.notify_clients(self.formatted_name) 
+                # self.onPlaylistSelected()
                 print(f"Archivo {filename} enviado al servidor")
             except Exception as e:
                 print(f"Error al enviar la canción al servidor: {e}")
