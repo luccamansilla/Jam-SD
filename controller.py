@@ -14,6 +14,7 @@ from PyQt5.QtCore import QTimer
 class MusicPlayerController(QObject):
     
     update_gui_signal = pyqtSignal(str, str, str, str)  # Define la señal (ej: para actualizar canción, posición, estado)
+    update_gui_signalSongs  = pyqtSignal()
     
     def __init__(self, view):
         super().__init__()  # Asegúrate de llamar al constructor de QObject
@@ -43,6 +44,7 @@ class MusicPlayerController(QObject):
 
 
         self.update_gui_signal.connect(self.update_song_state)#conecion al principa;
+        self.update_gui_signalSongs.connect(self.onPlaylistSelected)#conecion al principa;
         self.view.addSongButton.clicked.connect(self.addSong)
         self.view.seePlaylistsButton.clicked.connect(self.viewPlaylists)
         self.view.removeSongButton.clicked.connect(self.removeSong)
@@ -55,12 +57,12 @@ class MusicPlayerController(QObject):
 
         self.updatePlaylists()
         
-    @Pyro5.api.expose    
+    @pyqtSlot()  
     def onPlaylistSelected(self): #me dice en que playlist estoy
         self.current_playlist = self.view.playlistComboBox.currentText()
         self.view.setWindowTitle(f"Reproductor de música - Playlist: {self.current_playlist}")
         self.view.songList.clear()
-        songs = self.load_songs(self.view.playlistComboBox.currentText())
+        songs = self.client.load_songs(self.view.playlistComboBox.currentText())
         for song in songs:
             self.view.songList.addItem(song[0])
             # playlist_widget.addItem(playlist[1])
@@ -92,9 +94,9 @@ class MusicPlayerController(QObject):
             filename = os.path.basename(file.name)
             try:
                 self.client.transfer(data, filename)
-                self.insertSong(filename, filename, self.view.playlistComboBox.currentText())
-                self.client.notify_clients()
-                self.onPlaylistSelected()
+                self.client.insertSong(filename, filename, self.view.playlistComboBox.currentText())
+                # self.client.notify_clients()
+                # self.onPlaylistSelected()
                 print(f"Archivo {filename} enviado al servidor")
             except Exception as e:
                 print(f"Error al enviar la canción al servidor: {e}")
@@ -177,6 +179,10 @@ class MusicPlayerController(QObject):
     @Pyro5.api.expose #llamo al hilo principal
     def mainThread(self, song_name, position, state , duration):
         self.update_gui_signal.emit(song_name, position, state ,duration)
+        
+    @Pyro5.api.expose #llamo al hilo principal para actualizar canciones
+    def mainThreadUpdateSongs(self):
+        self.update_gui_signalSongs.emit()
 
     
     @pyqtSlot(str, str, str, str)
