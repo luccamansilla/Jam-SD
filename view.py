@@ -1,5 +1,5 @@
 # view.py
-from PyQt5.QtWidgets import QMainWindow, QPushButton, QVBoxLayout, QWidget, QSlider, QListWidget, QDialog, QHBoxLayout, QLabel, QComboBox
+from PyQt5.QtWidgets import QMainWindow, QPushButton, QVBoxLayout, QWidget, QSlider, QListWidget, QDialog, QHBoxLayout, QLabel, QComboBox,QLineEdit
 from PyQt5.QtCore import Qt
 
 class MusicPlayerView(QMainWindow):
@@ -76,6 +76,30 @@ class MusicPlayerView(QMainWindow):
         container = QWidget()
         container.setLayout(layout)
         self.setCentralWidget(container)
+
+# Nueva clase para el diálogo de ingreso de usuario
+class UserDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Ingresa tu nombre de usuario")
+        
+        # Crear un campo de texto para el nombre de usuario
+        self.nameInput = QLineEdit(self)
+        self.nameInput.setPlaceholderText("Tu nombre")
+
+        # Botón para confirmar el nombre de usuario
+        self.confirmButton = QPushButton("Aceptar", self)
+        self.confirmButton.clicked.connect(self.accept)
+
+        # Layout para el diálogo
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("Por favor, ingresa tu nombre de usuario:"))
+        layout.addWidget(self.nameInput)
+        layout.addWidget(self.confirmButton)
+        self.setLayout(layout)
+    
+    def getUserName(self):
+        return self.nameInput.text()
         
 class PlaylistDialog(QDialog):
     def __init__(self, parent=None):

@@ -94,6 +94,16 @@ class Testclass(object):
         finally:
             conn.close()
 
+    @Pyro5.api.expose
+    def load_songs(self, playlist_name):
+        conn = self.connect_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT playlist_id FROM playlist WHERE name = (?)", (playlist_name,))
+        playlist_id = cursor.fetchone()
+        cursor.execute("SELECT songs.name FROM songs_playlist INNER JOIN songs ON songs.song_id = songs_playlist.song_id WHERE songs_playlist.playlist_id = ?",  (playlist_id[0],))
+        songs = cursor.fetchall()
+        return songs
+
 
     #actualizo el clock de cada cliente en la playlist
     def update_state(self, playlist_name, state, clock):
@@ -122,9 +132,9 @@ class Testclass(object):
         if playlist_name not in self.songs_states:
             return
 
-        #clients = self.get_clients_in_playlist(playlist_name) ACA OBTENGO DE LA BASE DE DATOS
+        clients = self.get_clients_in_playlist(playlist_name) 
         state = self.songs_states[playlist_name]
-        for client_uri in self.clientes: #aca tengo q poner clients asi recorre los que trae la base
+        for client_uri in self.clients: 
             try:
                 path = self.get_song_path(state['song'])
                 proxy = Pyro5.api.Proxy(client_uri)
@@ -154,22 +164,15 @@ class Testclass(object):
         return self.songs_states.get(playlist_name, {})    
 
     @Pyro5.api.expose
-    def notify_clients(self): 
+    def notify_clients(self , playlist_name): 
             
-        #clients = self.get_clients_in_playlist(playlist_name) ACA OBTENGO DE LA BASE DE DATOS
-        for cliente in self.clientes:#aca tengo q poner clients asi recorre los que trae la base
+        clients = self.get_clients_in_playlist(playlist_name) 
+        for cliente in self.clients:
             try:
                 client_proxy = Pyro5.api.Proxy(cliente)  # Crea un proxy para el cliente
                 client_proxy.mainThreadUpdateSongs()  # Llama al método expuesto en el cliente
             except Exception as e:
                 print(f"Error al notificar al cliente {cliente}: {e}")
-
-
-    @Pyro5.api.expose
-    def register_client(self, client):
-        self.clientes.append(client)
-        self.insert_client("nombre",client)
-        print(f"Cliente registrado: {client}")
 
     @Pyro5.api.expose
     def insert_client(self, client_name, client_uri):
@@ -178,7 +181,19 @@ class Testclass(object):
         cursor.execute("INSERT INTO users (name, uri) VALUES (?, ?)", (client_name, str(client_uri)))
         conn.commit()
         conn.close()
+        self.insert_playlist(client_name)
 
+    @Pyro5.api.expose
+    def insert_playlist(self, name):
+        conn = self.connect_db()
+        cursor = conn.cursor()
+        
+        formatted_name = f"{name}Playlist"
+        cursor.execute("INSERT INTO playlist (name, is_shared) VALUES (?, ?)", (formatted_name,0))
+        
+        conn.commit()
+        conn.close()
+        
     @Pyro5.api.expose
     def update_is_shared(self, playlist_name):
         conn = self.connect_db()
