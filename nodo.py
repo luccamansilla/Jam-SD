@@ -160,7 +160,7 @@ class Testclass(object):
         for cliente in self.clientes:#aca tengo q poner clients asi recorre los que trae la base
             try:
                 client_proxy = Pyro5.api.Proxy(cliente)  # Crea un proxy para el cliente
-                client_proxy.onPlaylistSelected()  # Llama al método expuesto en el cliente
+                client_proxy.mainThreadUpdateSongs()  # Llama al método expuesto en el cliente
             except Exception as e:
                 print(f"Error al notificar al cliente {cliente}: {e}")
 

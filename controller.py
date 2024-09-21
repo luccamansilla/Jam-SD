@@ -98,7 +98,7 @@ class MusicPlayerController(QObject):
                 self.insertSong(filename, filename, self.view.playlistComboBox.currentText())
                 #self.current_playlist = self.view.playlistComboBox.currentText()       Le tengo q mandar el nombre de la playlist
                 self.client.notify_clients() #y aca pasarlo por parametro
-                self.onPlaylistSelected()
+                # self.onPlaylistSelected()
                 print(f"Archivo {filename} enviado al servidor")
             except Exception as e:
                 print(f"Error al enviar la canción al servidor: {e}")
