@@ -20,15 +20,15 @@ class MusicPlayerController(QObject):
 
         # Crear el Daemon Pyro y registrar el objeto del cliente
         daemon = Pyro5.api.Daemon()  # Crear el daemon Pyro para el cliente
-        client_uri = daemon.register(self)  # Registrar el objeto cliente
+        self.client_uri = daemon.register(self)  # Registrar el objeto cliente
 
         # Registrar el cliente en el servidor (pasar el URI del cliente al servidor)
         nameserver = Pyro5.api.locate_ns()
         self.server_uri = nameserver.lookup("playlist")  # Busca el servidor
         self.client = Pyro5.api.Proxy(self.server_uri)
-        self.client.register_client(client_uri)  # Pasar el URI del cliente al servidor
+        self.client.register_client(self.client_uri)  # Pasar el URI del cliente al servidor
 
-        print(f"Cliente registrado en el servidor con URI: {client_uri}")
+        print(f"Cliente registrado en el servidor con URI: {self.client_uri}")
 
          # Iniciar el daemon en un hilo separado para escuchar invocaciones desde el servidor
         self.daemon_thread = threading.Thread(target=daemon.requestLoop)
@@ -94,7 +94,8 @@ class MusicPlayerController(QObject):
             try:
                 self.client.transfer(data, filename)
                 self.insertSong(filename, filename, self.view.playlistComboBox.currentText())
-                self.client.notify_clients()
+                #self.current_playlist = self.view.playlistComboBox.currentText()       Le tengo q mandar el nombre de la playlist
+                self.client.notify_clients() #y aca pasarlo por parametro
                 self.onPlaylistSelected()
                 print(f"Archivo {filename} enviado al servidor")
             except Exception as e:
@@ -110,7 +111,9 @@ class MusicPlayerController(QObject):
 
     #hacer playlist colaborativa
     def makeCollaborative(self):
-        self.client.insert_playlist() #mandarle el nombre de playlist de donde?
+        self.current_playlist = self.view.playlistComboBox.currentText()
+        self.client.insert_playlist_in_users_playlist(self.current_playlist,self.client_uri) 
+        self.client.update_is_shared(self.current_playlist) #pone en 1 la playlist en columna is_shared
 
 
     def playSong(self):
@@ -256,10 +259,11 @@ class MusicPlayerController(QObject):
         return db.connect('spotify.db')
     
     def insert_playlist(self, name):
-        conn = self.connec1t_db()
+        conn = self.connect_db()
         cursor = conn.cursor()
         
-        cursor.execute("INSERT INTO playlist (name) VALUES (?)", (name,))
+        formatted_name = f"{name}Playlist"
+        cursor.execute("INSERT INTO playlist (name, is_shared) VALUES (?, ?)", (formatted_name,0))
         
         conn.commit()
         conn.close()
