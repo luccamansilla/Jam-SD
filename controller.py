@@ -1,10 +1,10 @@
 import os
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtCore import QUrl, QTime
-from PyQt5.QtWidgets import QFileDialog
+from PyQt5.QtWidgets import QFileDialog ,QDialog
 import Pyro5.api 
 import sqlite3 as db
-from view import PlaylistDialog
+from view import PlaylistDialog , UserDialog
 import threading
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 from PyQt5.QtCore import QTimer
@@ -18,6 +18,10 @@ class MusicPlayerController(QObject):
     def __init__(self, view):
         super().__init__()  # Asegúrate de llamar al constructor de QObject
 
+        # Mostrar la ventana modal para ingresar el nombre de usuario
+        self.user_name = self.getUserName()
+        print(f"Usuario ingresado: {self.user_name}")  # Solo para comprobar que obtenemos el nombre
+
         # Crear el Daemon Pyro y registrar el objeto del cliente
         daemon = Pyro5.api.Daemon()  # Crear el daemon Pyro para el cliente
         self.client_uri = daemon.register(self)  # Registrar el objeto cliente
@@ -26,7 +30,7 @@ class MusicPlayerController(QObject):
         nameserver = Pyro5.api.locate_ns()
         self.server_uri = nameserver.lookup("playlist")  # Busca el servidor
         self.client = Pyro5.api.Proxy(self.server_uri)
-        self.client.register_client(self.client_uri)  # Pasar el URI del cliente al servidor
+        #self.client.register_client(self.client_uri)  # Pasar el URI del cliente al servidor
 
         print(f"Cliente registrado en el servidor con URI: {self.client_uri}")
 
@@ -54,14 +58,26 @@ class MusicPlayerController(QObject):
         self.view.progressBar.sliderReleased.connect(self.setSongPosition)
         self.view.playlistComboBox.currentIndexChanged.connect(self.onPlaylistSelected)
 
+        self.client.insert_client(self.user_name,self.client_uri)
         self.updatePlaylists()
+
+
+    def getUserName(self):
+        # Crear el diálogo para obtener el nombre de usuario
+        dialog = UserDialog()
+        
+        # Mostrar el diálogo de forma modal (espera a que se cierre para continuar)
+        if dialog.exec_() == QDialog.Accepted:
+            return dialog.getUserName()
+        return "UsuarioDesconocido"  # Valor por defecto si no se ingresa nada
+
         
     @Pyro5.api.expose    
     def onPlaylistSelected(self): #me dice en que playlist estoy
-        self.current_playlist = self.view.playlistComboBox.currentText()
-        self.view.setWindowTitle(f"Reproductor de música - Playlist: {self.current_playlist}")
+        self.formatted_name = f"{self.user_name}Playlist"
+        self.view.setWindowTitle(f"Reproductor de música - Playlist: {self.formatted_name}")
         self.view.songList.clear()
-        songs = self.load_songs(self.view.playlistComboBox.currentText())
+        songs = self.client.load_songs(self.formatted_name)
         for song in songs:
             self.view.songList.addItem(song[0])
             # playlist_widget.addItem(playlist[1])
@@ -73,9 +89,17 @@ class MusicPlayerController(QObject):
             self.sendSongToServer(file_path)
             
     def viewPlaylists(self):
-        dialog = PlaylistDialog(self.view)
-        self.updatePlaylists()
-        dialog.exec_()
+        #self.load_playlists()  # Llama al método para cargar las playlists
+        self.playlistDialog = PlaylistDialog(self)
+        self.playlistDialog.playlistWidget.clear()  # Limpia la lista antes de agregar
+
+        # Agregar las playlists a la lista del diálogo
+        playlists = self.get_playlists()
+        for playlist in playlists:
+            self.playlistDialog.playlistWidget.addItem(playlist[1])  # Asumiendo que el nombre de la playlist está en la columna 1
+
+        self.playlistDialog.exec_()  # Muestra el diálogo
+
 
 
     def updatePlaylists(self):
@@ -93,9 +117,10 @@ class MusicPlayerController(QObject):
             filename = os.path.basename(file.name)
             try:
                 self.client.transfer(data, filename)
-                self.insertSong(filename, filename, self.view.playlistComboBox.currentText())
-                #self.current_playlist = self.view.playlistComboBox.currentText()       Le tengo q mandar el nombre de la playlist
-                self.client.notify_clients() #y aca pasarlo por parametro
+                self.formatted_name = f"{self.user_name}Playlist"
+                self.insertSong(filename, filename, self.formatted_name)
+                print(self.user_name)
+                self.client.notify_clients(self.formatted_name) 
                 self.onPlaylistSelected()
                 print(f"Archivo {filename} enviado al servidor")
             except Exception as e:
@@ -111,8 +136,8 @@ class MusicPlayerController(QObject):
 
     #hacer playlist colaborativa
     def makeCollaborative(self):
-        self.current_playlist = self.view.playlistComboBox.currentText()
-        self.client.insert_playlist_in_users_playlist(self.current_playlist,self.client_uri) 
+        self.formatted_name = f"{self.user_name}Playlist"
+        self.client.insert_playlist_in_users_playlist(self.formatted_name,self.client_uri) 
         self.client.update_is_shared(self.current_playlist) #pone en 1 la playlist en columna is_shared
 
 
@@ -258,16 +283,6 @@ class MusicPlayerController(QObject):
     def connect_db(self):
         return db.connect('spotify.db')
     
-    def insert_playlist(self, name):
-        conn = self.connect_db()
-        cursor = conn.cursor()
-        
-        formatted_name = f"{name}Playlist"
-        cursor.execute("INSERT INTO playlist (name, is_shared) VALUES (?, ?)", (formatted_name,0))
-        
-        conn.commit()
-        conn.close()
-        
     def insertSong(self, name, path, playlist):
         conn = self.connect_db()
         cursor = conn.cursor()
@@ -295,26 +310,20 @@ class MusicPlayerController(QObject):
         conn = self.connect_db()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT * FROM playlist")
+        # Ajustar la consulta para obtener solo las playlists donde user_leader = 1
+        cursor.execute("SELECT * FROM playlist WHERE is_shared = 1")
         playlists = cursor.fetchall()
 
         conn.close()
         return playlists
+
     
     def load_playlists(self):
         playlists = self.get_playlists()
         self.playlistList.clear()  # Asumiendo que tienes un QListWidget para mostrar las playlists
         for playlist in playlists:
             self.playlistList.addItem(playlist[1]) 
-            
-    def load_songs(self, playlist_name):
-        conn = self.connect_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT playlist_id FROM playlist WHERE name = (?)", (playlist_name,))
-        playlist_id = cursor.fetchone()
-        cursor.execute("SELECT songs.name FROM songs_playlist INNER JOIN songs ON songs.song_id = songs_playlist.song_id WHERE songs_playlist.playlist_id = ?",  (playlist_id[0],))
-        songs = cursor.fetchall()
-        return songs
+    
 
     def initialize_vector_clock(self, playlist_name):
         # Obtener los user_id en la playlist
