@@ -117,11 +117,7 @@ class MusicPlayerController(QObject):
                 self.client.transfer(data, filename)
                 self.formatted_name = f"{self.user_name}Playlist"
                 self.client.insertSong(filename, filename, self.formatted_name)
-                is_shared = self.client.get_shared_status(self.formatted_name)
-                if(is_shared == 0):
-                    self.onPlaylistSelected()
-                else:
-                    self.client.notify_clients(self.formatted_name) 
+                self.client.get_shared_status(self.formatted_name , self.client_uri)
                 print(f"Archivo {filename} enviado al servidor")
             except Exception as e:
                 print(f"Error al enviar la canción al servidor: {e}")
@@ -131,11 +127,7 @@ class MusicPlayerController(QObject):
         if selected_song:
             self.formatted_name = f"{self.user_name}Playlist"
             self.client.deleteSong(selected_song.text(), self.formatted_name)
-            is_shared = self.client.get_shared_status(self.formatted_name)
-            if(is_shared == 0):
-                self.onPlaylistSelected()
-            else:
-                self.client.notify_clients(self.formatted_name) 
+            self.client.get_shared_status(self.formatted_name , self.client_uri)
             # self.view.songList.takeItem(self.view.songList.row(selected_song))
 
 

@@ -57,7 +57,7 @@ class Testclass(object):
         return [Pyro5.api.URI(uri) for _, uri in usuarios]
     
     @Pyro5.api.expose
-    def get_shared_status(self, playlist_name):
+    def get_shared_status(self, playlist_name, client_uri):
         conn = self.connect_db()
         cursor = conn.cursor()
         # Obtener el valor de is_shared basado en el nombre de la playlist
@@ -67,8 +67,16 @@ class Testclass(object):
         conn.close()
         if playlist_row is None:
             return None  # Playlist no encontrada
-
-        return playlist_row[0]  # Retorna el valor de is_shared
+        is_shared = playlist_row[0]
+        # Si la playlist es compartida (is_shared = 1), llama al método notify_clients
+        if is_shared == 1:
+            self.notify_clients(playlist_name)
+        else:
+            try:
+                client_proxy = Pyro5.api.Proxy(client_uri)  
+                client_proxy.mainThreadUpdateSongs()  
+            except Exception as e:
+                print(f"Error al actualizar las canciones del cliente {client_uri}: {e}")
 
 
     @Pyro5.api.expose
@@ -300,6 +308,7 @@ class Testclass(object):
         cursor.execute("INSERT INTO songs_playlist (song_id, playlist_id, user_upload_id) VALUES (?, ?, ?)", (song_id, playlist_id[0], "1"))
         conn.commit()
         conn.close()
+
         
     @Pyro5.api.expose          
     def load_songs(self, playlist_name):
