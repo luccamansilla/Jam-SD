@@ -76,6 +76,12 @@ class MusicPlayerView(QMainWindow):
         container = QWidget()
         container.setLayout(layout)
         self.setCentralWidget(container)
+        
+    def closeEvent(self, event):
+        # Llama al método en el controlador para manejar el cierre
+        if hasattr(self.controller, 'close_app'):
+            self.controller.close_app()  # Llama al método de cierre en el controlador
+        event.accept()  # Acepta el evento de cierre
 
 # Nueva clase para el diálogo de ingreso de usuario
 class UserDialog(QDialog):

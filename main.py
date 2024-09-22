@@ -13,6 +13,8 @@ def main():
     # Crear el controlador y pasarle la vista
     controller = MusicPlayerController(view)
 
+    view.controller = controller
+
     # Mostrar la vista
     view.show()
 
