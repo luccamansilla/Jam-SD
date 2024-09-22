@@ -354,6 +354,39 @@ class Testclass(object):
         conn.close()
         return "La canción no se encontró en la playlist."
 
+    @Pyro5.api.expose
+    def deleteUser(self, client_uri):
+        try:
+            conn = self.connect_db()
+            cursor = conn.cursor()
+            
+            # Convertir URI a string
+            client_uri_str = str(client_uri)
+            
+            # Paso 1: Buscar el user_id del usuario basado en su URI
+            cursor.execute("SELECT user_id FROM users WHERE uri = ?", (client_uri_str,))
+            user_result = cursor.fetchone()
+            
+            if not user_result:
+                raise Exception(f"No se encontró un usuario con URI: {client_uri}")
+            
+            user_id = user_result[0]
+            
+            # Paso 2: Eliminar el usuario de la tabla users
+            cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+            
+            # Paso 3: Eliminar el usuario de la tabla users_playlist usando su user_id
+            cursor.execute("DELETE FROM users_playlist WHERE user_id = ?", (user_id,))
+            
+            conn.commit()
+            print(f"El usuario con URI {client_uri_str} y ID {user_id} fue eliminado correctamente.")
+            
+        except Exception as e:
+            print(f"Error al eliminar el usuario: {e}")
+        finally:
+            conn.close()
+
+
 
 if __name__ == "__main__":
     node_id =1 #int(sys.argv[1])  # Toma el ID del nodo desde los argumentos de línea de comandos
