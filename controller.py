@@ -182,7 +182,7 @@ class MusicPlayerController(QObject):
             wait_for_duration()
 
     def close_app(self):
-        self.client.deleteUser(self.client_uri)
+        #self.client.deleteUser(self.client_uri)
         print(f"se fue el usuario {self.client_uri}")
 
 
