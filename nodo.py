@@ -56,6 +56,25 @@ class Testclass(object):
         # Convertir las URIs de cadena a objetos Pyro URI y devolverlas
         return [Pyro5.api.URI(uri) for _, uri in usuarios]
     
+    def deletePlaylistShared(self, playlist_name):
+        conn = self.connect_db()
+        cursor = conn.cursor()
+
+        # Obtener el ID de la playlist basado en su nombre
+        cursor.execute("SELECT playlist_id FROM playlist WHERE name = ?", (playlist_name,))
+        playlist_row = cursor.fetchone()
+        if not playlist_row:
+            return []  # Playlist no encontrada
+
+        playlist_id = playlist_row[0]
+        
+        cursor.execute("""
+            DELETE FROM playlist
+            WHERE playlist_id = ?
+        """, (playlist_id,))
+        conn.commit()
+        cursor.close()
+    
     @Pyro5.api.expose
     def get_shared_status(self, playlist_name, client_uri):
         conn = self.connect_db()
@@ -80,7 +99,7 @@ class Testclass(object):
 
 
     @Pyro5.api.expose
-    def insert_playlist_in_users_playlist(self, current_playlist, client_uri):
+    def insert_playlist_in_users_playlist(self, current_playlist, client_uri, is_leader):
         try:
             conn = self.connect_db()
             cursor = conn.cursor()
@@ -106,7 +125,7 @@ class Testclass(object):
             
             # Paso 3: Insertar en la tabla users_playlist (user_id, playlist_id, user_leader)
             cursor.execute("INSERT INTO users_playlist (user_id, playlist_id, user_leader) VALUES (?, ?, ?)", 
-                        (user_id, playlist_id, 1))  # user_leader será 1
+                        (user_id, playlist_id, is_leader))  # user_leader será 1
 
             conn.commit()
             print(f"El usuario con id:  {user_id} hizo colaborativa la playlist con id : {playlist_id}")
@@ -176,7 +195,8 @@ class Testclass(object):
     @Pyro5.api.expose
     def notify_clients(self , playlist_name): 
         clients = self.get_clients_in_playlist(playlist_name) 
-        
+        print("desde notify_clients")
+        print(clients)
         for cliente in clients:
             try:
                 client_proxy = Pyro5.api.Proxy(cliente)  # Crea un proxy para el cliente

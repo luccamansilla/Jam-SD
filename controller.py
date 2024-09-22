@@ -42,7 +42,7 @@ class MusicPlayerController(QObject):
 
         self.view = view
         self.player = QMediaPlayer()
-        self.current_playlist = None
+        self.current_playlist = f"{self.user_name}Playlist"
         self.current_song = None
         self.vector_clocks = {}  # {playlist_name: RelojVectorial}
 
@@ -64,10 +64,9 @@ class MusicPlayerController(QObject):
         
     @pyqtSlot()  
     def onPlaylistSelected(self):
-        self.formatted_name = f"{self.user_name}Playlist"
-        self.view.setWindowTitle(f"Reproductor de música - Playlist: {self.formatted_name}")
+        self.view.setWindowTitle(f"Reproductor de música - Playlist: {self.current_playlist}")
         self.view.songList.clear()
-        songs = self.client.load_songs(self.formatted_name)
+        songs = self.client.load_songs(self.current_playlist)
         for song in songs:
             self.view.songList.addItem(song[0])
             
@@ -92,7 +91,12 @@ class MusicPlayerController(QObject):
         if dialog.exec_() == QDialog.Accepted:
             selected_playlist = dialog.getSelectedPlaylist()
             print(f"Playlist seleccionada: {selected_playlist}")
+            self.current_playlist = selected_playlist
+            print("PLAYLIST SELECCIONADA")
+            print(self.current_playlist)
+            self.client.insert_playlist_in_users_playlist(self.current_playlist, self.client_uri, 0) 
             self.loadSongPlaylist(selected_playlist)
+            self.request_initial_state()
 
     def getUserName(self):
             # Crear el diálogo para obtener el nombre de usuario
@@ -119,9 +123,8 @@ class MusicPlayerController(QObject):
             filename = os.path.basename(file.name)
             try:
                 self.client.transfer(data, filename)
-                self.formatted_name = f"{self.user_name}Playlist"
-                self.client.insertSong(filename, filename, self.formatted_name)
-                self.client.get_shared_status(self.formatted_name , self.client_uri)
+                self.client.insertSong(filename, filename, self.current_playlist)
+                self.client.get_shared_status(self.current_playlist, self.client_uri)
                 print(f"Archivo {filename} enviado al servidor")
             except Exception as e:
                 print(f"Error al enviar la canción al servidor: {e}")
@@ -129,17 +132,15 @@ class MusicPlayerController(QObject):
     def removeSong(self):
         selected_song = self.view.songList.currentItem()
         if selected_song:
-            self.formatted_name = f"{self.user_name}Playlist"
-            self.client.deleteSong(selected_song.text(), self.formatted_name)
-            self.client.get_shared_status(self.formatted_name , self.client_uri)
+            self.client.deleteSong(selected_song.text(), self.current_playlist)
+            self.client.get_shared_status(self.current_playlist, self.client_uri)
             # self.view.songList.takeItem(self.view.songList.row(selected_song))
 
 
     #hacer playlist colaborativa
     def makeCollaborative(self):
-        self.formatted_name = f"{self.user_name}Playlist"
-        self.client.insert_playlist_in_users_playlist(self.formatted_name,self.client_uri) 
-        self.client.update_is_shared(self.formatted_name) #pone en 1 la playlist en columna is_shared
+        self.client.insert_playlist_in_users_playlist(self.current_playlist, self.client_uri, 1) 
+        self.client.update_is_shared(self.current_playlist) #pone en 1 la playlist en columna is_shared
 
 
     def playSong(self):
@@ -187,6 +188,9 @@ class MusicPlayerController(QObject):
 
     def close_app(self):
         self.client.deleteUser(self.client_uri)
+        clients = self.client.get_clients_in_playlist(self.current_playlist)
+        if len(clients) == 0:
+            self.client.deletePlaylistShared(self.current_playlist)
         print(f"se fue el usuario {self.client_uri}")
 
 
@@ -212,7 +216,7 @@ class MusicPlayerController(QObject):
 
             self.player.setPosition(position_milliseconds)
 
-            if state == 'pausado':
+            if state == 'pausado' and not state:
                 self.player.pause()
                 self.view.playButton.setText("Reanudar")
             elif state == 'reproduciendo':
