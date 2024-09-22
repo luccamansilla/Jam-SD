@@ -108,18 +108,35 @@ class UserDialog(QDialog):
         return self.nameInput.text()
         
 class PlaylistDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, playlists, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Playlists activas")
+        self.setWindowTitle("Playlist compartidas actuales")
 
-        self.playlistWidget = QListWidget()
-        self.confirmPlaylistButton = QPushButton("Confirmar selección")
+        # Almacena las playlists
+        self.playlists = playlists
 
+        # Crear una lista de playlists
+        self.playlistListWidget = QListWidget(self)
+        for playlist in self.playlists:
+            self.playlistListWidget.addItem(playlist)
+
+        # Botones para confirmar o cerrar
+        self.confirmButton = QPushButton("Aceptar", self)
+        self.confirmButton.clicked.connect(self.accept)
+        
+        self.cancelButton = QPushButton("Cerrar", self)
+        self.cancelButton.clicked.connect(self.reject)
+
+        # Layout para el diálogo
         layout = QVBoxLayout()
-        layout.addWidget(self.playlistWidget)
-        layout.addWidget(self.confirmPlaylistButton)
+        layout.addWidget(QLabel("Selecciona una playlist compartida:"))
+        layout.addWidget(self.playlistListWidget)
+        layout.addWidget(self.confirmButton)
+        layout.addWidget(self.cancelButton)
         self.setLayout(layout)
 
-        # Conectar el botón a una función
-        # self.confirmPlaylistButton.clicked.connect(self.accept)
-        # self.confirmPlaylistButton.clicked.connect(self.confirm_selection)
+    def getSelectedPlaylist(self):
+        selected_item = self.playlistListWidget.currentItem()
+        if selected_item:
+            return selected_item.text()
+        return None

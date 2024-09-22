@@ -4,7 +4,7 @@ from PyQt5.QtCore import QUrl, QTime
 from PyQt5.QtWidgets import QFileDialog ,QDialog
 import Pyro5.api 
 import sqlite3 as db
-from view import PlaylistDialog , UserDialog
+from view import UserDialog, PlaylistDialog
 import threading
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 from PyQt5.QtCore import QTimer
@@ -63,11 +63,18 @@ class MusicPlayerController(QObject):
         self.updatePlaylists()
         
     @pyqtSlot()  
-    def onPlaylistSelected(self): #me dice en que playlist estoy
+    def onPlaylistSelected(self):
         self.formatted_name = f"{self.user_name}Playlist"
         self.view.setWindowTitle(f"Reproductor de música - Playlist: {self.formatted_name}")
         self.view.songList.clear()
         songs = self.client.load_songs(self.formatted_name)
+        for song in songs:
+            self.view.songList.addItem(song[0])
+            
+    def loadSongPlaylist(self, playlist):
+        self.view.setWindowTitle(f"Reproductor de música - Playlist: {playlist}")
+        self.view.songList.clear()
+        songs = self.client.load_songs(playlist)
         for song in songs:
             self.view.songList.addItem(song[0])
             # playlist_widget.addItem(playlist[1])
@@ -79,16 +86,13 @@ class MusicPlayerController(QObject):
             self.sendSongToServer(file_path)
             
     def viewPlaylists(self):
-        #self.load_playlists()  # Llama al método para cargar las playlists
-        self.playlistDialog = PlaylistDialog(self)
-        self.playlistDialog.playlistWidget.clear()  # Limpia la lista antes de agregar
-
-        # Agregar las playlists a la lista del diálogo
-        playlists = self.get_playlists()
-        for playlist in playlists:
-            self.playlistDialog.playlistWidget.addItem(playlist[1])  # Asumiendo que el nombre de la playlist está en la columna 1
-
-        self.playlistDialog.exec_()  # Muestra el diálogo
+        playlists = self.client.get_playlists()
+        print(playlists)
+        dialog = PlaylistDialog(playlists, self.view)  
+        if dialog.exec_() == QDialog.Accepted:
+            selected_playlist = dialog.getSelectedPlaylist()
+            print(f"Playlist seleccionada: {selected_playlist}")
+            self.loadSongPlaylist(selected_playlist)
 
     def getUserName(self):
             # Crear el diálogo para obtener el nombre de usuario
@@ -135,7 +139,7 @@ class MusicPlayerController(QObject):
     def makeCollaborative(self):
         self.formatted_name = f"{self.user_name}Playlist"
         self.client.insert_playlist_in_users_playlist(self.formatted_name,self.client_uri) 
-        self.client.update_is_shared(self.current_playlist) #pone en 1 la playlist en columna is_shared
+        self.client.update_is_shared(self.formatted_name) #pone en 1 la playlist en columna is_shared
 
 
     def playSong(self):
@@ -305,11 +309,11 @@ class MusicPlayerController(QObject):
         cursor = conn.cursor()
 
         # Ajustar la consulta para obtener solo las playlists donde user_leader = 1
-        cursor.execute("SELECT * FROM playlist WHERE is_shared = 1")
+        cursor.execute("SELECT name FROM playlist WHERE is_shared = 0")
         playlists = cursor.fetchall()
 
         conn.close()
-        return playlists
+        return [playlist[0] for playlist in playlists]
 
     
     def load_playlists(self):

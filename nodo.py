@@ -286,15 +286,16 @@ class Testclass(object):
     def connect_db(self):
         return db.connect('spotify.db')
     
+    @Pyro5.api.expose
     def get_playlists(self):
         conn = self.connect_db()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT * FROM playlist WHERE is_shared = 0")
+        cursor.execute("SELECT * FROM playlist WHERE is_shared = 1")
         playlists = cursor.fetchall()
 
         conn.close()
-        return playlists
+        return [playlist[1] for playlist in playlists]
 
     @Pyro5.api.expose
     def insertSong(self, name, path, playlist):
