@@ -22,9 +22,6 @@ class MusicPlayerView(QMainWindow):
         # self.confirmPlaylistButton.setVisible(False)
         
         
-        self.playlistComboBox = QComboBox()
-        self.playlistComboBox.setVisible(True)
-        
         self.addSongButton = QPushButton('Agregar canción')
         self.seePlaylistsButton = QPushButton('Playlist compartidas')
         self.removeSongButton = QPushButton('Borrar canción')
@@ -70,7 +67,6 @@ class MusicPlayerView(QMainWindow):
         layout.addLayout(progressLayout)
         layout.addWidget(self.warningLabel)
         layout.addLayout(controlLayout)
-        layout.addWidget(self.playlistComboBox)
 
         # Crear un widget central y establecer el layout
         container = QWidget()

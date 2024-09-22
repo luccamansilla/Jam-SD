@@ -146,7 +146,7 @@ class Testclass(object):
 
 
         #actualiza estado de la cancion en la platlist
-    def update_playlist_state(self, playlist_name, song_name, position, state , duration):
+    def update_playlist_state(self, playlist_name, song_name, position, state , duration ,uri_client):
         if playlist_name not in self.songs_states:
             self.songs_states[playlist_name] = {}
         self.songs_states[playlist_name] = {
@@ -155,7 +155,32 @@ class Testclass(object):
             'state': state,
             'duration': duration
         }
-        self.sync_clients(playlist_name)
+        self.shared_status(playlist_name,uri_client)
+    
+    @Pyro5.api.expose
+    def shared_status(self, playlist_name, client_uri):
+        conn = self.connect_db()
+        cursor = conn.cursor()
+        # Obtener el valor de is_shared basado en el nombre de la playlist
+        cursor.execute("SELECT is_shared FROM playlist WHERE name = ?", (playlist_name,))
+        playlist_row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        if playlist_row is None:
+            return None  # Playlist no encontrada
+        is_shared = playlist_row[0]
+        # Si la playlist es compartida (is_shared = 1), llama al método
+        if is_shared == 1:
+            self.sync_clients(playlist_name)
+        else:
+            try:
+                state = self.songs_states[playlist_name]
+                path = self.get_song_path(state['song'])
+                print(f"holaaa{path}")
+                proxy = Pyro5.api.Proxy(client_uri)
+                proxy.mainThread(path, state['position'], state['state'] , state['duration'])
+            except Exception as e:
+                print(f"Error al actualizar las canciones del cliente {client_uri}: {e}")
 
     #sincroniza a todos los clientes el estado de la cancion
     def sync_clients(self, playlist_name):
@@ -166,7 +191,9 @@ class Testclass(object):
         state = self.songs_states[playlist_name]
         for client_uri in clients: 
             try:
+                print(f"viendooo{client_uri}")
                 path = self.get_song_path(state['song'])
+                print(path)
                 proxy = Pyro5.api.Proxy(client_uri)
                 proxy.mainThread(path, state['position'], state['state'] , state['duration'])
             except Exception as e:
