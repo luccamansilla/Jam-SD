@@ -26,9 +26,9 @@ class Testclass(object):
         self.activo = True
         self.nameserver = Pyro5.core.locate_ns()
         self.songs_states = {}  # Diccionario para almacenar el estado de cada cancion
-        self.clients = {}  # Diccionario para almacenar los proxies de los clientes
+        #self.clients = {}  # Diccionario para almacenar los proxies de los clientes
         self.vector_clock = {} 
-        self.clientes = []
+        #self.clientes = []
 
     def get_clients_in_playlist(self, playlist_name):
         conn = self.connect_db()
@@ -55,6 +55,20 @@ class Testclass(object):
 
         # Convertir las URIs de cadena a objetos Pyro URI y devolverlas
         return [Pyro5.api.URI(uri) for _, uri in usuarios]
+    
+    @Pyro5.api.expose
+    def get_shared_status(self, playlist_name):
+        conn = self.connect_db()
+        cursor = conn.cursor()
+        # Obtener el valor de is_shared basado en el nombre de la playlist
+        cursor.execute("SELECT is_shared FROM playlist WHERE name = ?", (playlist_name,))
+        playlist_row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        if playlist_row is None:
+            return None  # Playlist no encontrada
+
+        return playlist_row[0]  # Retorna el valor de is_shared
 
 
     @Pyro5.api.expose
@@ -94,17 +108,6 @@ class Testclass(object):
         finally:
             conn.close()
 
-    @Pyro5.api.expose
-    def load_songs(self, playlist_name):
-        conn = self.connect_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT playlist_id FROM playlist WHERE name = (?)", (playlist_name,))
-        playlist_id = cursor.fetchone()
-        cursor.execute("SELECT songs.name FROM songs_playlist INNER JOIN songs ON songs.song_id = songs_playlist.song_id WHERE songs_playlist.playlist_id = ?",  (playlist_id[0],))
-        songs = cursor.fetchall()
-        return songs
-
-
     #actualizo el clock de cada cliente en la playlist
     def update_state(self, playlist_name, state, clock):
         current_clock.fusionar(clock)
@@ -134,7 +137,7 @@ class Testclass(object):
 
         clients = self.get_clients_in_playlist(playlist_name) 
         state = self.songs_states[playlist_name]
-        for client_uri in self.clients: 
+        for client_uri in clients: 
             try:
                 path = self.get_song_path(state['song'])
                 proxy = Pyro5.api.Proxy(client_uri)
@@ -146,7 +149,6 @@ class Testclass(object):
     def get_song_path(self, song_name):
         conn = self.connect_db()
         cursor = conn.cursor()
-
         # Consulta para obtener el path de la canción dado su nombre
         cursor.execute("SELECT path FROM songs WHERE name = ?", (song_name,))
         song_path = cursor.fetchone()
@@ -165,9 +167,9 @@ class Testclass(object):
 
     @Pyro5.api.expose
     def notify_clients(self , playlist_name): 
-            
         clients = self.get_clients_in_playlist(playlist_name) 
-        for cliente in self.clients:
+        
+        for cliente in clients:
             try:
                 client_proxy = Pyro5.api.Proxy(cliente)  # Crea un proxy para el cliente
                 client_proxy.mainThreadUpdateSongs()  # Llama al método expuesto en el cliente
@@ -187,10 +189,8 @@ class Testclass(object):
     def insert_playlist(self, name):
         conn = self.connect_db()
         cursor = conn.cursor()
-        
         formatted_name = f"{name}Playlist"
         cursor.execute("INSERT INTO playlist (name, is_shared) VALUES (?, ?)", (formatted_name,0))
-        
         conn.commit()
         conn.close()
         
@@ -271,19 +271,8 @@ class Testclass(object):
             if self.lider is None or not self.activo:
                 print(f"Nodo {self.id} detecta que el líder ha fallado, iniciando elección...")
                 self.iniciar_eleccion()
-      
-    def notifyClientsSongs(self):
-        print(f"Clientes conectados: {self.clients}")
-        for client_uri in self.clientes:
-            print(self.clients)
-            try:
-                proxy = Pyro5.api.Proxy(client_uri)
-                print(f"pasando {client_uri}")
-                proxy.mainThreadUpdateSongs()
-            except Exception as e:
-                print(f"Error al sincronizar con cliente para actualizar canciones {client_uri}: {e}")
-   
-                
+
+
     # CONSULTAS A LA BD
     
     def connect_db(self):
@@ -311,7 +300,6 @@ class Testclass(object):
         cursor.execute("INSERT INTO songs_playlist (song_id, playlist_id, user_upload_id) VALUES (?, ?, ?)", (song_id, playlist_id[0], "1"))
         conn.commit()
         conn.close()
-        self.notifyClientsSongs()
         
     @Pyro5.api.expose          
     def load_songs(self, playlist_name):
@@ -322,6 +310,40 @@ class Testclass(object):
         cursor.execute("SELECT songs.name FROM songs_playlist INNER JOIN songs ON songs.song_id = songs_playlist.song_id WHERE songs_playlist.playlist_id = ?",  (playlist_id[0],))
         songs = cursor.fetchall()
         return songs
+
+    @Pyro5.api.expose
+    def deleteSong(self, name, playlist):
+        conn = self.connect_db()
+        cursor = conn.cursor()
+        # 1. Obtener el playlist_id por su nombre
+        cursor.execute("SELECT playlist_id FROM playlist WHERE name = ?", (playlist,))
+        playlist_id = cursor.fetchone()
+        if not playlist_id:
+            conn.close()
+            return "La playlist no existe en la base de datos."
+        playlist_id = playlist_id[0]
+        # 2. Obtener todos los song_id que coincidan con el playlist_id en la tabla songs_playlist
+        cursor.execute("SELECT song_id FROM songs_playlist WHERE playlist_id = ?", (playlist_id,))
+        song_ids = cursor.fetchall()
+        if not song_ids:
+            conn.close()
+            return "No hay canciones asociadas a esta playlist."
+        # 3. Buscar en la tabla songs por cada song_id para encontrar el nombre que coincida
+        for song_id_tuple in song_ids:
+            song_id = song_id_tuple[0]
+            cursor.execute("SELECT name FROM songs WHERE song_id = ?", (song_id,))
+            song_name = cursor.fetchone()
+            # 4. Comparar el nombre con el proporcionado
+            if song_name and song_name[0] == name:
+                # 5. Eliminar la relación en songs_playlist
+                cursor.execute("DELETE FROM songs_playlist WHERE song_id = ? AND playlist_id = ?", (song_id, playlist_id))
+                conn.commit()
+                conn.close()
+                return f"La canción '{name}' ha sido eliminada de la playlist '{playlist}'."
+        # Si no se encontró la canción
+        conn.close()
+        return "La canción no se encontró en la playlist."
+
 
 if __name__ == "__main__":
     node_id =1 #int(sys.argv[1])  # Toma el ID del nodo desde los argumentos de línea de comandos

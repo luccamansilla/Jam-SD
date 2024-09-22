@@ -58,7 +58,6 @@ class MusicPlayerController(QObject):
         self.player.positionChanged.connect(self.updateProgressBar)
         self.player.durationChanged.connect(self.updateProgressBarRange)
         self.view.progressBar.sliderReleased.connect(self.setSongPosition)
-        self.view.playlistComboBox.currentIndexChanged.connect(self.onPlaylistSelected)
 
         self.client.insert_client(self.user_name,self.client_uri)
         self.updatePlaylists()
@@ -118,9 +117,11 @@ class MusicPlayerController(QObject):
                 self.client.transfer(data, filename)
                 self.formatted_name = f"{self.user_name}Playlist"
                 self.client.insertSong(filename, filename, self.formatted_name)
-                # print(self.user_name)
-                # self.client.notify_clients(self.formatted_name) 
-                # self.onPlaylistSelected()
+                is_shared = self.client.get_shared_status(self.formatted_name)
+                if(is_shared == 0):
+                    self.onPlaylistSelected()
+                else:
+                    self.client.notify_clients(self.formatted_name) 
                 print(f"Archivo {filename} enviado al servidor")
             except Exception as e:
                 print(f"Error al enviar la canción al servidor: {e}")
@@ -128,8 +129,13 @@ class MusicPlayerController(QObject):
     def removeSong(self):
         selected_song = self.view.songList.currentItem()
         if selected_song:
-            self.deleteSong(selected_song.text(), self.view.playlistComboBox.currentText())
-            self.onPlaylistSelected()
+            self.formatted_name = f"{self.user_name}Playlist"
+            self.client.deleteSong(selected_song.text(), self.formatted_name)
+            is_shared = self.client.get_shared_status(self.formatted_name)
+            if(is_shared == 0):
+                self.onPlaylistSelected()
+            else:
+                self.client.notify_clients(self.formatted_name) 
             # self.view.songList.takeItem(self.view.songList.row(selected_song))
 
 
@@ -295,17 +301,6 @@ class MusicPlayerController(QObject):
         cursor.execute("SELECT playlist_id FROM playlist WHERE name = (?)", (playlist,))
         playlist_id = cursor.fetchone()
         cursor.execute("INSERT INTO songs_playlist (song_id, playlist_id, user_upload_id) VALUES (?, ?, ?)", (song_id, playlist_id[0], "1"))
-        conn.commit()
-        conn.close()
-        
-    def deleteSong(self, name, playlist):
-        conn = self.connect_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT song_id FROM songs WHERE name = (?)", (name,))
-        song_id = cursor.fetchone()
-        cursor.execute("SELECT playlist_name FROM playlist WHERE name = (?)", (playlist,))
-        playlist_name = cursor.fetchone()
-        cursor.execute("DELETE FROM songs_playlist WHERE song_id = (?) AND playlist_name = (?)", (song_id[0], playlist_name[0]))
         conn.commit()
         conn.close()
         
