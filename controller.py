@@ -124,6 +124,8 @@ class MusicPlayerController(QObject):
         if selected_song:
             self.client.deleteSong(selected_song.text(), self.current_playlist)
             self.client.get_shared_status(self.current_playlist, self.client_uri)
+            if selected_song.text() == self.current_song:
+                self.client.update_playlist_state(self.current_playlist, None, "0:0", "stop", "0:0", self.client_uri)
             # self.view.songList.takeItem(self.view.songList.row(selected_song))
 
 
@@ -135,7 +137,6 @@ class MusicPlayerController(QObject):
 
     def playSong(self):
         song_name = self.view.songList.currentItem().text() if self.view.songList.currentItem() else self.current_song
-        # song_name = selected_song.text() if selected_song else None
         current_time = self.view.currentTimeLabel.text() if self.view.currentTimeLabel.text() else self.current_time
         duration = self.view.durationTimeLabel.text() if self.view.durationTimeLabel.text() else self.current_duration
 
@@ -146,7 +147,6 @@ class MusicPlayerController(QObject):
 
         # reproductor = reproduciendo
         if self.player.state() == QMediaPlayer.PlayingState:
-            print("entro")
             self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'pausado', duration, self.client_uri)
         #reproductor = pausado
         elif self.player.state() == QMediaPlayer.PausedState:
@@ -154,7 +154,6 @@ class MusicPlayerController(QObject):
     
         else:
             # Primera vez que se reproduce una canción
-            print(f"ENTRA ELSE TERCERO")
             if not song_name:
                 self.view.warningLabel.setText("No hay canción seleccionada")
                 self.view.warningLabel.setVisible(True)
@@ -164,31 +163,12 @@ class MusicPlayerController(QObject):
                 self.view.warningLabel.setText("Archivo de canción no encontrado")
                 self.view.warningLabel.setVisible(True)
                 return
-
-                
-            durationTime = self.view.durationTimeLabel.text() if self.view.durationTimeLabel.text() is not None else '0:0'
+            self.current_song = song_name
             if self.current_state == "pausado":
-                self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'renaudar',durationTime,self.client_uri)
+                self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'renaudar',duration,self.client_uri)
             else:
-                self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'reproduciendo',durationTime,self.client_uri)
-            # url = QUrl.fromLocalFile(song_path)
-            # content = QMediaContent(url)
-            # self.player.setMedia(content)
-            # self.player.play()
-            # self.view.playButton.setText("Pausar")
-
-            # Esperar la duración y actualizar el estado con los otros clientes
-            def wait_for_duration():
-                print("ENTRO WAIT")
-                duration = self.player.duration()
-                if duration > 0:
-                    durationTime = self.view.durationTimeLabel.text()
-                    print(f"Esperando duración completa antes de iniciar{duration}")
-                    self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'reproduciendo',durationTime,self.client_uri)
-                else:
-                    QTimer.singleShot(100, wait_for_duration)
-
-            # wait_for_duration()
+                self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'reproduciendo',duration,self.client_uri)
+           
 
     def close_app(self):
         self.client.deleteUser(self.client_uri)
@@ -200,7 +180,6 @@ class MusicPlayerController(QObject):
 
     @Pyro5.api.expose #llamo al hilo principal
     def mainThread(self, song_name, position, state , duration):
-        print("pasando")
         self.update_gui_signal.emit(song_name, position, state ,duration)
         
     @Pyro5.api.expose #llamo al hilo principal para actualizar canciones
@@ -227,23 +206,17 @@ class MusicPlayerController(QObject):
             self.player.setPosition(position_milliseconds)
             print(state)
             if state == 'pausado':
-                print("paso")
                 self.player.pause()
                 self.view.playButton.setText("Reanudar")
             elif state == 'reproduciendo':
-                print("ENTRO REPRODUCIENDO")
                 if song_path:  
-                    print("ENTRO SONG_PATH")
-                    
-                    print(path)
                     url = QUrl.fromLocalFile(path)
                     content = QMediaContent(url)
                     self.player.setMedia(content)
+                    self.player.setPosition(position_milliseconds)
                     self.player.play()
                 self.view.playButton.setText("Pausar")
-            elif state == 'renaudar':
-                print("ENTRO RENAUDAR")
-                
+            elif state == 'renaudar':                
                 if not self.player.media().isNull():
                     print("El QMediaPlayer tiene un archivo cargado.")
                 else:
@@ -251,15 +224,15 @@ class MusicPlayerController(QObject):
                     url = QUrl.fromLocalFile(path)
                     content = QMediaContent(url)
                     self.player.setMedia(content)
+                    self.player.setPosition(position_milliseconds)
                 self.player.play()
                 self.view.playButton.setText("Pausar")
             elif state == 'stop':
+                print("ENTRO STOP")
                 self.player.stop()
                 self.view.playButton.setText("Reproducir")
-                self.player.setMedia(QMediaContent())
-            
-            
-            
+                self.player.setMedia(None)
+
         except Exception as e:
             print(f"Error en update_song_state: {e}")
 
