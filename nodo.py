@@ -348,7 +348,7 @@ class Testclass(object):
     def insertSong(self, name, path, playlist):
         conn = self.connect_db()
         cursor = conn.cursor()
-        pathNew = "/songs/"+path
+        pathNew = "songs/"+path
         cursor.execute("INSERT INTO songs (name, path) VALUES (?, ?)", (name, pathNew))
         song_id = cursor.lastrowid
         cursor.execute("SELECT playlist_id FROM playlist WHERE name = (?)", (playlist,))
