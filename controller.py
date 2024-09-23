@@ -124,6 +124,8 @@ class MusicPlayerController(QObject):
         if selected_song:
             self.client.deleteSong(selected_song.text(), self.current_playlist)
             self.client.get_shared_status(self.current_playlist, self.client_uri)
+            if selected_song.text() == self.current_song:
+                self.client.update_playlist_state(self.current_playlist, None, "0:0", "stop", "0:0", self.client_uri)
             # self.view.songList.takeItem(self.view.songList.row(selected_song))
 
 
@@ -161,10 +163,13 @@ class MusicPlayerController(QObject):
                 self.view.warningLabel.setText("Archivo de canción no encontrado")
                 self.view.warningLabel.setVisible(True)
                 return
-                
+            self.current_song = song_name
             if self.current_state == "pausado":
                 self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'renaudar',duration,self.client_uri)
+                self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'renaudar',duration,self.client_uri)
             else:
+                self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'reproduciendo',duration,self.client_uri)
+           
                 self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'reproduciendo',duration,self.client_uri)
            
 
@@ -226,9 +231,10 @@ class MusicPlayerController(QObject):
                 self.player.play()
                 self.view.playButton.setText("Pausar")
             elif state == 'stop':
+                print("ENTRO STOP")
                 self.player.stop()
                 self.view.playButton.setText("Reproducir")
-                self.player.setMedia(QMediaContent())
+                self.player.setMedia(None)
 
         except Exception as e:
             print(f"Error en update_song_state: {e}")
