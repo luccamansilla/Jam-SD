@@ -124,8 +124,6 @@ class MusicPlayerController(QObject):
         if selected_song:
             self.client.deleteSong(selected_song.text(), self.current_playlist)
             self.client.get_shared_status(self.current_playlist, self.client_uri)
-            if selected_song.text() == self.current_song:
-                self.client.update_playlist_state(self.current_playlist, None, "0:0", "stop", "0:0", self.client_uri)
             # self.view.songList.takeItem(self.view.songList.row(selected_song))
 
 
@@ -234,7 +232,7 @@ class MusicPlayerController(QObject):
                 print("ENTRO STOP")
                 self.player.stop()
                 self.view.playButton.setText("Reproducir")
-                self.player.setMedia(None)
+                self.player.setMedia(QMediaContent())
 
         except Exception as e:
             print(f"Error en update_song_state: {e}")
