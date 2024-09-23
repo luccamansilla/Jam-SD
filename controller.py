@@ -166,7 +166,10 @@ class MusicPlayerController(QObject):
             self.current_song = song_name
             if self.current_state == "pausado":
                 self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'renaudar',duration,self.client_uri)
+                self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'renaudar',duration,self.client_uri)
             else:
+                self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'reproduciendo',duration,self.client_uri)
+           
                 self.client.update_playlist_state(self.current_playlist, song_name, current_time, 'reproduciendo',duration,self.client_uri)
            
 
