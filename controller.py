@@ -3,6 +3,7 @@ from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
 from PyQt5.QtCore import QUrl, QTime
 from PyQt5.QtWidgets import QFileDialog ,QDialog
 import Pyro5.api 
+import serpent
 import sqlite3 as db
 from view import UserDialog, PlaylistDialog
 import threading
@@ -16,7 +17,7 @@ class MusicPlayerController(QObject):
     
     update_gui_signal = pyqtSignal(str, str, str, str)  # Define la señal (ej: para actualizar canción, posición, estado)
     update_gui_signalSongs  = pyqtSignal()
-    update_gui_ReceiveSong  = pyqtSignal(bytes, str)
+    update_gui_ReceiveSong  = pyqtSignal(dict, str)
     
     def __init__(self, view):
         super().__init__()  # Asegúrate de llamar al constructor de QObject
@@ -281,10 +282,12 @@ class MusicPlayerController(QObject):
         print(f"Actualización recibida para playlist {playlist_name}: {state}, Reloj: {self.vector_clocks[playlist_name]}")
       
     
-    @pyqtSlot(bytes, str)  
+    @pyqtSlot(dict, str)  
     def receiveFile(self, data, filename):
         file_path = os.path.join("songs", filename)
-        print(file_path)
+        if Pyro5.api.config.SERIALIZER == "serpent" and isinstance(data, dict):
+            data = serpent.tobytes(data)
+        print(f"FILE PATH {file_path}")
         try:
             with open(file_path, "wb") as file:
                 file.write(data)

@@ -282,9 +282,9 @@ class Testclass(object):
         file_path = os.path.join(save_directory, filename)
         print(f"Ruta de archivo configurada: {file_path}")
 
+        self.shareSongFile(data, filename, playlist)
         if not os.path.exists(file_path):
             try:
-                self.shareSongFile(data, filename, playlist)
                 with open(file_path, "wb") as f:
                     f.write(data)
                     print(f"Archivo guardado en: {file_path}")
