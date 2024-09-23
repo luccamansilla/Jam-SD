@@ -20,15 +20,25 @@ else:
 @Pyro5.api.expose
 class Testclass(object):
     def __init__(self, id, nodos):
-        self.id = 1  # ID único del nodo
-        self.lider = None
+        self.id = id  # ID único del nodo
+        self.lider = 2
         self.nodos = nodos  # Lista de nodos (ID, URI)
         self.activo = True
+        
+        self.ultima_vez_recibido = time.time()  # Tiempo de recepción del último heartbeat
+        self.timeout = 5  # Tiempo de espera para recibir un heartbeat
+
+        # Banderas para controlar la creación de hilos
+        self.heartbeat_activo = False
+        self.deteccion_fallo_activo = False
+    
+        
         self.nameserver = Pyro5.core.locate_ns()
         self.songs_states = {}  # Diccionario para almacenar el estado de cada cancion
         #self.clients = {}  # Diccionario para almacenar los proxies de los clientes
         self.vector_clock = {} 
         #self.clientes = []
+
 
     def get_clients_in_playlist(self, playlist_name):
         conn = self.connect_db()
@@ -271,41 +281,75 @@ class Testclass(object):
                 with open(file_path, "wb") as f:
                     f.write(data)
                     print(f"Archivo guardado en: {file_path}")
+                    self.propagarDatos(data, filename)
             except Exception as e:
                 print(f"Failed to save the file: {e}")
         else:
             print("Ya existe un archivo con el mismo nombre, no se volvió a guardar el archivo")
         return len(data)
 
+
+    def propagarDatos(self, data, filename):
+         for nodo in self.nodos:
+            if nodo[0] != self.lider:
+                try:
+                    proxy = Pyro5.api.Proxy(f"PYRONAME:{nodo[1]}")
+                    proxy.transfer(data, filename);
+                    print(f"Nodo {nodo[1]}: Propagacion exitosa!!...")
+                except Exception as e:
+                    print(f"Nodo {nodo[1]} no está disponible para comunicarlo, nodo no se actualizo con la información (inactivo). Error: {e}")
+            
+
     def iniciar_eleccion(self):
         """Inicia el proceso de elección (Protocolo Bully)"""
         print(f"Nodo {self.id} inicia elección...")
-        
-       
+        # Filtrar los nodos mayores
         candidatos = [nodo for nodo in self.nodos if nodo[0] > self.id]
 
-        if not candidatos:
+        # Lista para almacenar los nodos activos mayores
+        nodos_activos = []
+
+        # Comprobar si los candidatos están activos
+        for candidato in candidatos:
+            try:
+                # Intentar contactar con el nodo candidato
+                proxy = Pyro5.api.Proxy(f"PYRONAME:{candidato[1]}")
+                proxy.ping()  # Ping para comprobar si el nodo está activo
+
+                # Si llega aquí, el nodo candidato está activo
+                nodos_activos.append(candidato)
+                print(f"El nodo {candidato[0]} está activo.")
+
+            except Exception as e:
+                # Si no se puede contactar con el nodo, se asume que está inactivo
+                print(f"Nodo {candidato[0]} no está disponible (inactivo). Error: {e}")
+                
+        if not nodos_activos:
             # Si no hay candidatos mayores, este nodo se convierte en líder
             self.lider = self.id
             print(f"Nodo {self.id} se convierte en el nuevo líder.")
             for nodo in self.nodos:
                 if nodo[0] != self.id:
-                    proxy = Pyro5.api.Proxy(f"PYRONAME:{nodo[1]}")
-                    proxy.nuevo_lider(self.id)
+                    try:
+                        proxy = Pyro5.api.Proxy(f"PYRONAME:{nodo[1]}")
+                        proxy.nuevo_lider(self.id)
+                    except Exception as e:
+                        print(f"Nodo {nodo[1]} no está disponible para comunicarlo quien es el nuevo lider (inactivo). Error: {e}")
+                
+            self.iniciar_heartbeat()  # Iniciar heartbeats si se convierte en líder
         else:
-            for candidato in candidatos:
+            for candidato in nodos_activos:
                 proxy = Pyro5.api.Proxy(f"PYRONAME:{candidato[1]}")
                 try:
                     proxy.eleccion(self.id)
                 except Exception as e:
                     print(f"Error al contactar con nodo {candidato[0]}: {e}")
-    
+
     def eleccion(self, nodo_id):
         """Respuesta a la solicitud de elección"""
         if nodo_id < self.id:
             print(f"Nodo {self.id} recibe solicitud de elección de {nodo_id} y responde.")
-            uri = self.nameserver.lookup(self.nodos[nodo_id-1][1])
-            proxy = Pyro5.api.Proxy(uri)
+            proxy = Pyro5.api.Proxy(f"PYRONAME:{self.nodos[nodo_id-1][1]}")
             proxy.aceptar_eleccion(self.id)
             self.iniciar_eleccion()
     
@@ -313,20 +357,77 @@ class Testclass(object):
         """Actualiza el nodo con el nuevo líder"""
         print(f"Nodo {self.id} acepta a {nuevo_lider_id} como líder.")
         self.lider = nuevo_lider_id
+
+        if self.lider == self.id:
+            print(f"Nodo {self.id} es ahora el líder, iniciando envío de heartbeats.")
+            self.iniciar_heartbeat()  # Inicia heartbeats si se convierte en líder
     
     def nuevo_lider(self, lider_id):
         """Notifica a los nodos que hay un nuevo líder"""
         print(f"Nodo {self.id} fue notificado que el nuevo líder es {lider_id}")
         self.lider = lider_id
 
-    def detectar_fallo_lider(self):
-        """Simula la detección de un fallo del líder"""
-        while self.activo:
-            time.sleep(random.randint(5, 10))  # Simula la detección aleatoria de fallos
-            if self.lider is None or not self.activo:
-                print(f"Nodo {self.id} detecta que el líder ha fallado, iniciando elección...")
-                self.iniciar_eleccion()
+    def iniciar_heartbeat(self):
+        """Inicia el envío de heartbeats si no está ya activo"""
+        if not self.heartbeat_activo:
+            self.heartbeat_activo = True
+            threading.Thread(target=self.enviar_heartbeat).start()
 
+    def enviar_heartbeat(self):
+        """El líder envía heartbeats a los seguidores"""
+
+        try:
+            while self.lider == self.id and self.activo:
+                for nodo in self.nodos:
+                    if nodo[0] != self.id:  # No enviarse a sí mismo
+                        try:
+                            proxy = Pyro5.api.Proxy(f"PYRONAME:{nodo[1]}")
+                            proxy.recibir_heartbeat()
+                            print(f"Heartbeat enviado al nodo {nodo[0]}")
+                            self.getLider();
+                        except Exception as e:
+                            print(f"Error al enviar heartbeat al nodo {nodo[0]}: {e}")
+                time.sleep(2)  # Enviar heartbeats cada 2 segundos
+        finally:
+            self.heartbeat_activo = False  # Marcar el hilo como inactivo cuando termine
+
+    def recibir_heartbeat(self):
+        """Recibe un heartbeat del líder"""
+        self.ultima_vez_recibido = time.time()
+        print(f"Nodo {self.id} recibió heartbeat del líder.")
+        
+        # print(f"hilo de deteccion de fallos:... {self.deteccion_fallo_activo}")
+
+        self.iniciar_deteccion_fallo()
+
+    def iniciar_deteccion_fallo(self):
+        """Inicia la detección de fallos si no está ya activa"""
+        if not self.deteccion_fallo_activo:
+            self.deteccion_fallo_activo = True
+            threading.Thread(target=self.detectar_fallo_lider).start()
+
+    def detectar_fallo_lider(self):
+        """Detecta si el líder ha fallado al no recibir heartbeats"""
+        try:
+            while self.activo:
+                time.sleep(3)
+                if self.lider is not None and time.time() - self.ultima_vez_recibido > self.timeout:
+                    print(f"Nodo {self.id} detecta que el líder ha fallado, iniciando elección... {time.time() - self.ultima_vez_recibido > self.timeout}")
+                    self.iniciar_eleccion()
+                    break  # Termina el hilo una vez que detecta el fallo y se inicia la elección
+        finally:
+            self.deteccion_fallo_activo = False  # Marcar el hilo como inactivo cuando termine
+
+    def ping(self):
+        """Manejo de ping para comprobar si el nodo está activo"""
+        return "Nodo activo"
+
+    def getLider(self):
+        """Retorno de Lider"""
+        
+        print(f"Lider es el Nodo {self.lider}:... {self.nodos[self.id - 1][1]}")
+        # return Pyro5.api.Proxy(f"PYRONAME:{self.nodos[self.lider][1]}")
+ 
 
     # CONSULTAS A LA BD
     
@@ -434,23 +535,54 @@ class Testclass(object):
             conn.close()
 
 
+# Configuración del entorno de nodos
+hostname = socket.gethostname()
+IPAddr = socket.gethostbyname(hostname)
 
-if __name__ == "__main__":
-    node_id =1 #int(sys.argv[1])  # Toma el ID del nodo desde los argumentos de línea de comandos
-    listPort =[0,5001,5002,5003];
-    nodos = [
-        (1, "playlist"),
-    ]
+# Lista de nodos (ID, URI)
+nodos = [
+    (1, "playlist1"),
+    (2, "playlist2"),
+    # (3, "playlist3"),
+]
+
+# El ID de este nodo
+node_id = 1 # Cambiar este ID para cada nodo que levantes (1, 2, 3, etc.)
+
+daemon = Pyro5.server.Daemon(host=IPAddr)
+
+ns = Pyro5.api.locate_ns()
+
+# Registrar la clase Testclass con el sistema de nombres
+nodo = Testclass(node_id, nodos)
+uri = daemon.register(nodo)
+ns.register(f"playlist{node_id}", uri)
+print(f"Nodo {node_id} registrado con URI: {uri}")
+
+# Iniciar hilos de heartbeat y detección de fallos de manera controlada
+nodo.iniciar_heartbeat()
+nodo.iniciar_deteccion_fallo()
+
+# Iniciar el bucle de solicitudes
+print("Nodo listo para recibir solicitudes.")
+daemon.requestLoop()
+
+# if __name__ == "__main__":
+#     node_id =1 #int(sys.argv[1])  # Toma el ID del nodo desde los argumentos de línea de comandos
+#     listPort =[0,5001,5002,5003];
+#     nodos = [
+#         (1, "playlist"),
+#     ]
     
-    daemon = Pyro5.server.Daemon(host=socket.gethostbyname(socket.gethostname()), port=listPort[node_id])
-    ns = Pyro5.api.locate_ns()
+#     daemon = Pyro5.server.Daemon(host=socket.gethostbyname(socket.gethostname()), port=listPort[node_id])
+#     ns = Pyro5.api.locate_ns()
 
-    # Registrar el nodo
-    uri = daemon.register(Testclass(node_id, nodos))
-    ns.register(f"playlist", uri)
+#     # Registrar el nodo
+#     uri = daemon.register(Testclass(node_id, nodos))
+#     ns.register(f"playlist", uri)
     
-    nodo = Testclass(node_id, nodos)
-    threading.Thread(target=nodo.detectar_fallo_lider).start()
+#     nodo = Testclass(node_id, nodos)
+#     threading.Thread(target=nodo.detectar_fallo_lider).start()
 
-    print(f"Nodo {node_id} listo en {uri}")
-    daemon.requestLoop()
+#     print(f"Nodo {node_id} listo en {uri}")
+#     daemon.requestLoop()
