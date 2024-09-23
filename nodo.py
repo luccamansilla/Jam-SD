@@ -21,7 +21,7 @@ else:
 class Testclass(object):
     def __init__(self, id, nodos):
         self.id = id  # ID único del nodo
-        self.lider = 2
+        self.lider = 1
         self.nodos = nodos  # Lista de nodos (ID, URI)
         self.activo = True
         
@@ -39,7 +39,7 @@ class Testclass(object):
         self.vector_clock = {} 
         #self.clientes = []
 
-
+    @Pyro5.api.expose
     def get_clients_in_playlist(self, playlist_name):
         conn = self.connect_db()
         cursor = conn.cursor()
@@ -66,6 +66,7 @@ class Testclass(object):
         # Convertir las URIs de cadena a objetos Pyro URI y devolverlas
         return [Pyro5.api.URI(uri) for _, uri in usuarios]
     
+    @Pyro5.api.expose
     def deletePlaylistShared(self, playlist_name):
         conn = self.connect_db()
         cursor = conn.cursor()
@@ -146,6 +147,7 @@ class Testclass(object):
             conn.close()
 
     #actualizo el clock de cada cliente en la playlist
+    @Pyro5.api.expose
     def update_state(self, playlist_name, state, clock):
         current_clock.fusionar(clock)
         self.vector_clock[playlist_name] = (current_clock)
@@ -156,6 +158,8 @@ class Testclass(object):
 
 
         #actualiza estado de la cancion en la platlist
+    
+    @Pyro5.api.expose
     def update_playlist_state(self, playlist_name, song_name, position, state , duration ,uri_client):
         if playlist_name not in self.songs_states:
             self.songs_states[playlist_name] = {}
@@ -193,6 +197,7 @@ class Testclass(object):
                 print(f"Error al actualizar las canciones del cliente {client_uri}: {e}")
 
     #sincroniza a todos los clientes el estado de la cancion
+    @Pyro5.api.expose
     def sync_clients(self, playlist_name):
         if playlist_name not in self.songs_states:
             return
@@ -200,8 +205,8 @@ class Testclass(object):
         clients = self.get_clients_in_playlist(playlist_name) 
         state = self.songs_states[playlist_name]
         for client_uri in clients: 
+            print(f"CLIENTE ACTUAL   {client_uri}")
             try:
-                print(f"viendooo{client_uri}")
                 path = self.get_song_path(state['song'])
                 print(path)
                 proxy = Pyro5.api.Proxy(client_uri)
@@ -222,6 +227,7 @@ class Testclass(object):
         else:
             return None  # Si no se encuentra la canción, retornar None
 
+    @Pyro5.api.expose
     def connect_db(self):
         return db.connect('spotify.db')
    
@@ -232,9 +238,8 @@ class Testclass(object):
     @Pyro5.api.expose
     def notify_clients(self , playlist_name): 
         clients = self.get_clients_in_playlist(playlist_name) 
-        print("desde notify_clients")
-        print(clients)
         for cliente in clients:
+            print(f"NOTIFICANDO CLIENTE {cliente}")
             try:
                 client_proxy = Pyro5.api.Proxy(cliente)  # Crea un proxy para el cliente
                 client_proxy.mainThreadUpdateSongs()  # Llama al método expuesto en el cliente
@@ -269,7 +274,8 @@ class Testclass(object):
         conn.close()
 
 
-    def transfer(self, data, filename):
+    @Pyro5.api.expose
+    def transfer(self, data, filename, playlist):
         if Pyro5.api.config.SERIALIZER == "serpent" and isinstance(data, dict):
             data = serpent.tobytes(data)  # Convertir el diccionario en bytes si es necesario
         
@@ -278,6 +284,7 @@ class Testclass(object):
 
         if not os.path.exists(file_path):
             try:
+                self.shareSongFile(data, filename, playlist)
                 with open(file_path, "wb") as f:
                     f.write(data)
                     print(f"Archivo guardado en: {file_path}")
@@ -287,8 +294,21 @@ class Testclass(object):
         else:
             print("Ya existe un archivo con el mismo nombre, no se volvió a guardar el archivo")
         return len(data)
+    
+    @Pyro5.api.expose
+    def shareSongFile(self, data, filename, playlist):
+        clients= self.get_clients_in_playlist(playlist)
+        # Enviar el archivo a cada cliente
+        for client in clients:
+            try:
+                print(f"Enviando {filename} a {client}")
+                client = Pyro5.api.Proxy(client)  # Crea un proxy para el cliente
+                client.receiveFile(data, filename)  # Llamar al método que implementes en el cliente para recibir archivos
+            except Exception as e:
+                print(f"Error al enviar el archivo a {client}: {e}")
 
 
+    @Pyro5.api.expose
     def propagarDatos(self, data, filename):
          for nodo in self.nodos:
             if nodo[0] != self.lider:
@@ -300,6 +320,7 @@ class Testclass(object):
                     print(f"Nodo {nodo[1]} no está disponible para comunicarlo, nodo no se actualizo con la información (inactivo). Error: {e}")
             
 
+    @Pyro5.api.expose
     def iniciar_eleccion(self):
         """Inicia el proceso de elección (Protocolo Bully)"""
         print(f"Nodo {self.id} inicia elección...")
@@ -345,6 +366,7 @@ class Testclass(object):
                 except Exception as e:
                     print(f"Error al contactar con nodo {candidato[0]}: {e}")
 
+    @Pyro5.api.expose
     def eleccion(self, nodo_id):
         """Respuesta a la solicitud de elección"""
         if nodo_id < self.id:
@@ -353,6 +375,7 @@ class Testclass(object):
             proxy.aceptar_eleccion(self.id)
             self.iniciar_eleccion()
     
+    @Pyro5.api.expose
     def aceptar_eleccion(self, nuevo_lider_id):
         """Actualiza el nodo con el nuevo líder"""
         print(f"Nodo {self.id} acepta a {nuevo_lider_id} como líder.")
@@ -362,17 +385,20 @@ class Testclass(object):
             print(f"Nodo {self.id} es ahora el líder, iniciando envío de heartbeats.")
             self.iniciar_heartbeat()  # Inicia heartbeats si se convierte en líder
     
+    @Pyro5.api.expose
     def nuevo_lider(self, lider_id):
         """Notifica a los nodos que hay un nuevo líder"""
         print(f"Nodo {self.id} fue notificado que el nuevo líder es {lider_id}")
         self.lider = lider_id
 
+    @Pyro5.api.expose
     def iniciar_heartbeat(self):
         """Inicia el envío de heartbeats si no está ya activo"""
         if not self.heartbeat_activo:
             self.heartbeat_activo = True
             threading.Thread(target=self.enviar_heartbeat).start()
 
+    @Pyro5.api.expose
     def enviar_heartbeat(self):
         """El líder envía heartbeats a los seguidores"""
 
@@ -391,6 +417,7 @@ class Testclass(object):
         finally:
             self.heartbeat_activo = False  # Marcar el hilo como inactivo cuando termine
 
+    @Pyro5.api.expose
     def recibir_heartbeat(self):
         """Recibe un heartbeat del líder"""
         self.ultima_vez_recibido = time.time()
@@ -400,12 +427,14 @@ class Testclass(object):
 
         self.iniciar_deteccion_fallo()
 
+    @Pyro5.api.expose
     def iniciar_deteccion_fallo(self):
         """Inicia la detección de fallos si no está ya activa"""
         if not self.deteccion_fallo_activo:
             self.deteccion_fallo_activo = True
             threading.Thread(target=self.detectar_fallo_lider).start()
 
+    @Pyro5.api.expose
     def detectar_fallo_lider(self):
         """Detecta si el líder ha fallado al no recibir heartbeats"""
         try:
@@ -418,10 +447,12 @@ class Testclass(object):
         finally:
             self.deteccion_fallo_activo = False  # Marcar el hilo como inactivo cuando termine
 
+    @Pyro5.api.expose
     def ping(self):
         """Manejo de ping para comprobar si el nodo está activo"""
         return "Nodo activo"
 
+    @Pyro5.api.expose
     def getLider(self):
         """Retorno de Lider"""
         
@@ -431,6 +462,7 @@ class Testclass(object):
 
     # CONSULTAS A LA BD
     
+    @Pyro5.api.expose
     def connect_db(self):
         return db.connect('spotify.db')
     
@@ -538,7 +570,7 @@ class Testclass(object):
 # Configuración del entorno de nodos
 hostname = socket.gethostname()
 IPAddr = socket.gethostbyname(hostname)
-
+print(f"IP NODO {IPAddr}")
 # Lista de nodos (ID, URI)
 nodos = [
     (1, "playlist1"),
@@ -560,8 +592,8 @@ ns.register(f"playlist{node_id}", uri)
 print(f"Nodo {node_id} registrado con URI: {uri}")
 
 # Iniciar hilos de heartbeat y detección de fallos de manera controlada
-nodo.iniciar_heartbeat()
-nodo.iniciar_deteccion_fallo()
+# nodo.iniciar_heartbeat()
+# nodo.iniciar_deteccion_fallo()
 
 # Iniciar el bucle de solicitudes
 print("Nodo listo para recibir solicitudes.")

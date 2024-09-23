@@ -8,6 +8,7 @@ from view import UserDialog, PlaylistDialog
 import threading
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 from PyQt5.QtCore import QTimer
+import socket
 
 
 
@@ -20,16 +21,17 @@ class MusicPlayerController(QObject):
         super().__init__()  # Asegúrate de llamar al constructor de QObject
 
         # Mostrar la ventana modal para ingresar el nombre de usuario
+        client_ip = socket.gethostbyname(socket.gethostname())
         self.user_name = self.getUserName()
         print(f"Usuario ingresado: {self.user_name}")  # Solo para comprobar que obtenemos el nombre
 
         # Crear el Daemon Pyro y registrar el objeto del cliente
-        daemon = Pyro5.api.Daemon()  # Crear el daemon Pyro para el cliente
+        daemon = Pyro5.api.Daemon(host=client_ip)  # Crear el daemon Pyro para el cliente
         self.client_uri = daemon.register(self)  # Registrar el objeto cliente
 
         # Registrar el cliente en el servidor (pasar el URI del cliente al servidor)
         nameserver = Pyro5.api.locate_ns()
-        self.server_uri = nameserver.lookup("playlist")  # Busca el servidor
+        self.server_uri = nameserver.lookup("playlist1")  # Busca el servidor
         self.client = Pyro5.api.Proxy(self.server_uri)
         #self.client.register_client(self.client_uri)  # Pasar el URI del cliente al servidor
 
@@ -112,7 +114,7 @@ class MusicPlayerController(QObject):
             data = file.read()
             filename = os.path.basename(file.name)
             try:
-                self.client.transfer(data, filename)
+                self.client.transfer(data, filename, self.current_playlist)
                 self.client.insertSong(filename, filename, self.current_playlist)
                 self.client.get_shared_status(self.current_playlist, self.client_uri)
                 print(f"Archivo {filename} enviado al servidor")
@@ -271,7 +273,17 @@ class MusicPlayerController(QObject):
         self.vector_clocks[playlist_name].fusionar(clock)
         # Actualizar la interfaz o estado local según el estado recibido
         print(f"Actualización recibida para playlist {playlist_name}: {state}, Reloj: {self.vector_clocks[playlist_name]}")
-    
+      
+    @Pyro5.api.expose  
+    def receiveFile(self, data, filename):
+        file_path = os.path.join("songs", filename)
+        try:
+            with open(file_path, "wb") as file:
+                file.write(data)
+                print(f"Archivo {filename} guardado en el cliente en: {file_path}")
+        except Exception as e:
+            print(f"Error al guardar el archivo {filename} en el cliente: {e}")
+        
     def stopSong(self):
         selected_song = self.view.songList.currentItem()
         song_name = None
