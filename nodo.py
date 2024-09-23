@@ -303,7 +303,7 @@ class Testclass(object):
             try:
                 print(f"Enviando {filename} a {client}")
                 client = Pyro5.api.Proxy(client)  # Crea un proxy para el cliente
-                client.receiveFile(data, filename)  # Llamar al método que implementes en el cliente para recibir archivos
+                client.mainThreadReceiveSong(data, filename)  # Llamar al método que implementes en el cliente para recibir archivos
             except Exception as e:
                 print(f"Error al enviar el archivo a {client}: {e}")
 

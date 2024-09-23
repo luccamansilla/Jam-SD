@@ -16,6 +16,7 @@ class MusicPlayerController(QObject):
     
     update_gui_signal = pyqtSignal(str, str, str, str)  # Define la señal (ej: para actualizar canción, posición, estado)
     update_gui_signalSongs  = pyqtSignal()
+    update_gui_ReceiveSong  = pyqtSignal(bytes, str)
     
     def __init__(self, view):
         super().__init__()  # Asegúrate de llamar al constructor de QObject
@@ -54,6 +55,7 @@ class MusicPlayerController(QObject):
 
         self.update_gui_signal.connect(self.update_song_state)#conecion al principa;
         self.update_gui_signalSongs.connect(self.onPlaylistSelected)#conecion al principa;
+        self.update_gui_ReceiveSong.connect(self.receiveFile)#conecion al principa;
         self.view.addSongButton.clicked.connect(self.addSong)
         self.view.sharePlaylistButton.clicked.connect(self.makeCollaborative)
         self.view.seePlaylistsButton.clicked.connect(self.viewPlaylists)
@@ -188,6 +190,10 @@ class MusicPlayerController(QObject):
     @Pyro5.api.expose #llamo al hilo principal para actualizar canciones
     def mainThreadUpdateSongs(self):
         self.update_gui_signalSongs.emit()
+    
+    @Pyro5.api.expose #llamo al hilo principal para actualizar canciones
+    def mainThreadReceiveSong(self, data, filename):
+        self.update_gui_ReceiveSong.emit(data, filename)
 
     
     @pyqtSlot(str, str, str, str)
@@ -274,9 +280,11 @@ class MusicPlayerController(QObject):
         # Actualizar la interfaz o estado local según el estado recibido
         print(f"Actualización recibida para playlist {playlist_name}: {state}, Reloj: {self.vector_clocks[playlist_name]}")
       
-    @Pyro5.api.expose  
+    
+    @pyqtSlot(bytes, str)  
     def receiveFile(self, data, filename):
         file_path = os.path.join("songs", filename)
+        print(file_path)
         try:
             with open(file_path, "wb") as file:
                 file.write(data)
