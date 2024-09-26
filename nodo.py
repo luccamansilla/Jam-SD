@@ -26,7 +26,7 @@ class Testclass(object):
         self.activo = True
         
         self.ultima_vez_recibido = time.time()  # Tiempo de recepción del último heartbeat
-        self.timeout = 5  # Tiempo de espera para recibir un heartbeat
+        self.timeout = 31  # Tiempo de espera para recibir un heartbeat
 
         # Banderas para controlar la creación de hilos
         self.heartbeat_activo = False
@@ -413,7 +413,7 @@ class Testclass(object):
                             self.getLider();
                         except Exception as e:
                             print(f"Error al enviar heartbeat al nodo {nodo[0]}: {e}")
-                time.sleep(2)  # Enviar heartbeats cada 2 segundos
+                time.sleep(30)  # Enviar heartbeats cada 2 segundos
         finally:
             self.heartbeat_activo = False  # Marcar el hilo como inactivo cuando termine
 
@@ -439,7 +439,7 @@ class Testclass(object):
         """Detecta si el líder ha fallado al no recibir heartbeats"""
         try:
             while self.activo:
-                time.sleep(3)
+                time.sleep(30)
                 if self.lider is not None and time.time() - self.ultima_vez_recibido > self.timeout:
                     print(f"Nodo {self.id} detecta que el líder ha fallado, iniciando elección... {time.time() - self.ultima_vez_recibido > self.timeout}")
                     self.iniciar_eleccion()
@@ -579,7 +579,7 @@ nodos = [
 ]
 
 # El ID de este nodo
-node_id = 1 # Cambiar este ID para cada nodo que levantes (1, 2, 3, etc.)
+node_id = 2 # Cambiar este ID para cada nodo que levantes (1, 2, 3, etc.)
 
 daemon = Pyro5.server.Daemon(host=IPAddr)
 
@@ -592,8 +592,8 @@ ns.register(f"playlist{node_id}", uri)
 print(f"Nodo {node_id} registrado con URI: {uri}")
 
 # Iniciar hilos de heartbeat y detección de fallos de manera controlada
-# nodo.iniciar_heartbeat()
-# nodo.iniciar_deteccion_fallo()
+nodo.iniciar_heartbeat()
+nodo.iniciar_deteccion_fallo()
 
 # Iniciar el bucle de solicitudes
 print("Nodo listo para recibir solicitudes.")

@@ -33,7 +33,7 @@ class MusicPlayerController(QObject):
 
         # Registrar el cliente en el servidor (pasar el URI del cliente al servidor)
         nameserver = Pyro5.api.locate_ns()
-        self.server_uri = nameserver.lookup("playlist1")  # Busca el servidor
+        self.server_uri = nameserver.lookup("playlist2")  # Busca el servidor
         self.client = Pyro5.api.Proxy(self.server_uri)
         #self.client.register_client(self.client_uri)  # Pasar el URI del cliente al servidor
 
